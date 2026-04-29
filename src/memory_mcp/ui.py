@@ -16,6 +16,11 @@ def _auth_headers() -> dict:
 app = FastAPI(title="memory-ui")
 
 
+@app.get("/health")
+def ui_health():
+    return {"status": "ok"}
+
+
 def _get(path: str, **params) -> dict:
     try:
         with httpx.Client() as client:
