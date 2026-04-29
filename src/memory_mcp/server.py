@@ -42,6 +42,14 @@ def create_app() -> FastAPI:
         )
         return {"memories": [_record_dict(r) for r in records]}
 
+    # ── REST get single ────────────────────────────────────────────────────────
+    @app.get("/memories/{memory_id}", dependencies=[Depends(require_token)])
+    def get_memory(memory_id: str):
+        record = store.get(memory_id)
+        if not record:
+            raise HTTPException(status_code=404, detail="Memory not found")
+        return _record_dict(record)
+
     # ── REST search ────────────────────────────────────────────────────────────
     class SearchRequest(BaseModel):
         query: str
@@ -74,7 +82,7 @@ def create_app() -> FastAPI:
         existing = store.list_memories(filter_source_repo=req.source_repo, limit=1000)
         match = next((r for r in existing if r.name == req.name), None)
         if match:
-            record = store.update(match.id, req.content, req.tags)
+            record = store.update(match.id, req.content, req.tags, type=req.type)
         else:
             record = store.upsert(MemoryRecord(
                 id=MemoryStore.new_id(),
@@ -99,7 +107,8 @@ def create_app() -> FastAPI:
     # ── REST delete ────────────────────────────────────────────────────────────
     @app.delete("/memories/{memory_id}", dependencies=[Depends(require_token)], status_code=204)
     def delete_memory(memory_id: str):
-        store.delete(memory_id)
+        if not store.delete(memory_id):
+            raise HTTPException(status_code=404, detail="Memory not found")
 
     return app
 

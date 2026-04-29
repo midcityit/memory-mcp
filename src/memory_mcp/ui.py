@@ -8,16 +8,27 @@ TEMPLATES_DIR = os.path.join(os.path.dirname(__file__), "templates")
 templates = Jinja2Templates(directory=TEMPLATES_DIR)
 
 MCP_URL = os.environ.get("MCP_URL", "http://localhost:8000")
-API_TOKEN = os.environ.get("API_TOKEN", "")
-_headers = {"Authorization": f"Bearer {API_TOKEN}"}
+
+def _auth_headers() -> dict:
+    token = os.environ.get("API_TOKEN", "")
+    return {"Authorization": f"Bearer {token}"}
 
 app = FastAPI(title="memory-ui")
+
+
+@app.get("/health")
+def ui_health():
+    return {"status": "ok"}
 
 
 def _get(path: str, **params) -> dict:
     try:
         with httpx.Client() as client:
-            resp = client.get(f"{MCP_URL}{path}", headers=_headers, params={k: v for k, v in params.items() if v})
+            resp = client.get(
+                f"{MCP_URL}{path}",
+                headers=_auth_headers(),
+                params={k: v for k, v in params.items() if v},
+            )
             resp.raise_for_status()
             return resp.json()
     except httpx.HTTPError:
@@ -27,11 +38,23 @@ def _get(path: str, **params) -> dict:
 def _post(path: str, json: dict) -> dict:
     try:
         with httpx.Client() as client:
-            resp = client.post(f"{MCP_URL}{path}", headers=_headers, json=json)
+            resp = client.post(f"{MCP_URL}{path}", headers=_auth_headers(), json=json)
             resp.raise_for_status()
             return resp.json()
     except httpx.HTTPError:
         return {"memories": []}
+
+
+def _get_one(path: str) -> dict | None:
+    try:
+        with httpx.Client() as client:
+            resp = client.get(f"{MCP_URL}{path}", headers=_auth_headers())
+            if resp.status_code == 404:
+                return None
+            resp.raise_for_status()
+            return resp.json()
+    except httpx.HTTPError:
+        return None
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -57,9 +80,7 @@ def index(request: Request, q: str = "", type: str = "", source_repo: str = ""):
 
 @app.get("/memories/{memory_id}", response_class=HTMLResponse)
 def memory_detail(request: Request, memory_id: str):
-    data = _get("/memories")
-    memories = data.get("memories", [])
-    memory = next((m for m in memories if m["id"] == memory_id), None)
-    if not memory:
+    memory = _get_one(f"/memories/{memory_id}")
+    if memory is None:
         return HTMLResponse("Not found", status_code=404)
     return templates.TemplateResponse("memory.html", {"request": request, "memory": memory})
