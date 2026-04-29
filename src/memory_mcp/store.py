@@ -59,8 +59,12 @@ class MemoryStore:
     def annotate_staleness(
         self, records: list[MemoryRecord], stale_days: int
     ) -> list[MemoryRecord]:
+        age_limit = timedelta(days=stale_days, seconds=1)
         for r in records:
-            r.stale = self.is_stale(r.updated_at)
+            updated = datetime.fromisoformat(r.updated_at)
+            if updated.tzinfo is None:
+                updated = updated.replace(tzinfo=timezone.utc)
+            r.stale = (datetime.now(timezone.utc) - updated) > age_limit
         return records
 
     def upsert(self, record: MemoryRecord) -> MemoryRecord:
@@ -153,6 +157,8 @@ class MemoryStore:
         return self.upsert(existing)
 
     def delete(self, memory_id: str) -> bool:
+        if not self.get(memory_id):
+            return False
         self._client.delete(
             collection_name=COLLECTION,
             points_selector=[memory_id],
