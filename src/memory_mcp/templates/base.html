@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{% block title %}Memory Twin{% endblock %}</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: system-ui, sans-serif; background: #f8fafc; color: #1e293b; line-height: 1.6; }
+    .container { max-width: 800px; margin: 0 auto; padding: 1rem; }
+    nav { background: #1e293b; color: #fff; padding: .75rem 1rem; }
+    nav a { color: #93c5fd; text-decoration: none; font-weight: 600; font-size: 1.1rem; }
+    .badge { display: inline-block; font-size: .7rem; padding: .15rem .4rem; border-radius: 4px; font-weight: 600; }
+    .badge-stale { background: #fef3c7; color: #92400e; }
+    .badge-type { background: #e0e7ff; color: #3730a3; }
+    .card { background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 1rem; margin-bottom: .75rem; }
+    .card h3 { font-size: 1rem; margin-bottom: .25rem; }
+    .card h3 a { color: #1e293b; text-decoration: none; }
+    .card h3 a:hover { color: #2563eb; }
+    .meta { font-size: .75rem; color: #64748b; margin-top: .25rem; }
+    .search-bar { display: flex; gap: .5rem; margin-bottom: 1rem; flex-wrap: wrap; }
+    .search-bar input, .search-bar select { padding: .5rem; border: 1px solid #cbd5e1; border-radius: 6px; font-size: .9rem; }
+    .search-bar input[type=text] { flex: 1; min-width: 200px; }
+    .search-bar button { background: #2563eb; color: #fff; border: none; border-radius: 6px; padding: .5rem 1rem; cursor: pointer; font-size: .9rem; }
+    pre { background: #f1f5f9; padding: 1rem; border-radius: 6px; overflow-x: auto; font-size: .85rem; white-space: pre-wrap; }
+  </style>
+</head>
+<body>
+  <nav><div class="container"><a href="/">🧠 Memory Twin</a></div></nav>
+  <div class="container" style="margin-top:1.5rem">
+    {% block content %}{% endblock %}
+  </div>
+</body>
+</html>

@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}Memory Twin — Browse{% endblock %}
+{% block content %}
+<form method="get" action="/" class="search-bar">
+  <input type="text" name="q" placeholder="Search memories…" value="{{ q or '' }}" />
+  <select name="type">
+    <option value="">All types</option>
+    {% for t in ["user","feedback","project","reference"] %}
+    <option value="{{ t }}" {% if filter_type == t %}selected{% endif %}>{{ t }}</option>
+    {% endfor %}
+  </select>
+  <select name="source_repo">
+    <option value="">All repos</option>
+    {% for r in repos %}
+    <option value="{{ r }}" {% if filter_source_repo == r %}selected{% endif %}>{{ r }}</option>
+    {% endfor %}
+  </select>
+  <button type="submit">Search</button>
+</form>
+
+{% if memories %}
+  {% for m in memories %}
+  <div class="card">
+    <h3><a href="/memories/{{ m.id }}">{{ m.name }}</a>
+      <span class="badge badge-type">{{ m.type }}</span>
+      {% if m.stale %}<span class="badge badge-stale">⚠️ stale</span>{% endif %}
+    </h3>
+    <p style="font-size:.875rem;color:#475569;margin:.25rem 0;">{{ m.content[:160] }}{% if m.content|length > 160 %}…{% endif %}</p>
+    <div class="meta">{{ m.source_repo }} · {{ m.agent }} · {{ m.updated_at[:10] }}</div>
+  </div>
+  {% endfor %}
+{% else %}
+  <p style="color:#64748b;">No memories found.</p>
+{% endif %}
+{% endblock %}

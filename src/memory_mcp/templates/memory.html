@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}{{ memory.name }} — Memory Twin{% endblock %}
+{% block content %}
+<p><a href="/">← Back</a></p>
+<div class="card" style="margin-top:1rem">
+  <h2 style="font-size:1.25rem;margin-bottom:.5rem;">
+    {{ memory.name }}
+    <span class="badge badge-type">{{ memory.type }}</span>
+    {% if memory.stale %}<span class="badge badge-stale">⚠️ Stale — verify this is still current</span>{% endif %}
+  </h2>
+  <div class="meta" style="margin-bottom:1rem;">
+    repo: {{ memory.source_repo }} · agent: {{ memory.agent }}<br/>
+    created: {{ memory.created_at[:10] }} · updated: {{ memory.updated_at[:10] }}
+    {% if memory.tags %} · tags: {{ memory.tags | join(", ") }}{% endif %}
+  </div>
+  <pre>{{ memory.content }}</pre>
+</div>
+{% endblock %}
