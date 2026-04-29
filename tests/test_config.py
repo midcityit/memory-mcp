@@ -21,8 +21,15 @@ def test_load_config_custom_stale_days(monkeypatch):
     assert cfg.stale_days == 14
 
 
-def test_load_config_missing_required_raises(monkeypatch):
+def test_load_config_missing_qdrant_url_raises(monkeypatch):
     monkeypatch.delenv("QDRANT_URL", raising=False)
+    monkeypatch.setenv("API_TOKEN", "tok")
+    with pytest.raises(KeyError):
+        load_config()
+
+
+def test_load_config_missing_api_token_raises(monkeypatch):
+    monkeypatch.setenv("QDRANT_URL", "http://localhost:6333")
     monkeypatch.delenv("API_TOKEN", raising=False)
     with pytest.raises(KeyError):
         load_config()
