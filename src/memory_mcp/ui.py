@@ -15,17 +15,23 @@ app = FastAPI(title="memory-ui")
 
 
 def _get(path: str, **params) -> dict:
-    with httpx.Client() as client:
-        resp = client.get(f"{MCP_URL}{path}", headers=_headers, params={k: v for k, v in params.items() if v})
-        resp.raise_for_status()
-        return resp.json()
+    try:
+        with httpx.Client() as client:
+            resp = client.get(f"{MCP_URL}{path}", headers=_headers, params={k: v for k, v in params.items() if v})
+            resp.raise_for_status()
+            return resp.json()
+    except httpx.HTTPError:
+        return {"memories": []}
 
 
 def _post(path: str, json: dict) -> dict:
-    with httpx.Client() as client:
-        resp = client.post(f"{MCP_URL}{path}", headers=_headers, json=json)
-        resp.raise_for_status()
-        return resp.json()
+    try:
+        with httpx.Client() as client:
+            resp = client.post(f"{MCP_URL}{path}", headers=_headers, json=json)
+            resp.raise_for_status()
+            return resp.json()
+    except httpx.HTTPError:
+        return {"memories": []}
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -37,8 +43,11 @@ def index(request: Request, q: str = "", type: str = "", source_repo: str = ""):
     else:
         data = _get("/memories", type=type, source_repo=source_repo)
     memories = data.get("memories", [])
-    all_data = _get("/memories")
-    repos = sorted({m["source_repo"] for m in all_data.get("memories", [])})
+    if type or source_repo or q:
+        all_data = _get("/memories")
+        repos = sorted({m["source_repo"] for m in all_data.get("memories", [])})
+    else:
+        repos = sorted({m["source_repo"] for m in memories})
     return templates.TemplateResponse("index.html", {
         "request": request, "memories": memories,
         "q": q, "filter_type": type, "filter_source_repo": source_repo,
