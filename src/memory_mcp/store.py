@@ -6,7 +6,7 @@ from typing import Optional
 from qdrant_client import QdrantClient
 from qdrant_client.models import (
     Distance, VectorParams, PointStruct, Filter,
-    FieldCondition, MatchValue, MatchAny,
+    FieldCondition, MatchValue, MatchAny, PointIdsList,
 )
 from sentence_transformers import SentenceTransformer
 
@@ -147,21 +147,24 @@ class MemoryStore:
         r.stale = self.is_stale(r.updated_at)
         return r
 
-    def update(self, memory_id: str, content: str, tags: list[str]) -> Optional[MemoryRecord]:
+    def update(self, memory_id: str, content: str, tags: list[str], type: str | None = None) -> Optional[MemoryRecord]:
         existing = self.get(memory_id)
         if not existing:
             return None
         existing.content = content
         existing.tags = tags
+        if type is not None:
+            existing.type = type
         existing.updated_at = datetime.now(timezone.utc).isoformat()
         return self.upsert(existing)
 
     def delete(self, memory_id: str) -> bool:
-        if not self.get(memory_id):
+        existing = self.get(memory_id)
+        if not existing:
             return False
         self._client.delete(
             collection_name=COLLECTION,
-            points_selector=[memory_id],
+            points_selector=PointIdsList(points=[memory_id]),
         )
         return True
 
