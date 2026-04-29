@@ -40,6 +40,18 @@ def _post(path: str, json: dict) -> dict:
         return {"memories": []}
 
 
+def _get_one(path: str) -> dict | None:
+    try:
+        with httpx.Client() as client:
+            resp = client.get(f"{MCP_URL}{path}", headers=_auth_headers())
+            if resp.status_code == 404:
+                return None
+            resp.raise_for_status()
+            return resp.json()
+    except httpx.HTTPError:
+        return None
+
+
 @app.get("/", response_class=HTMLResponse)
 def index(request: Request, q: str = "", type: str = "", source_repo: str = ""):
     if q:
@@ -63,7 +75,7 @@ def index(request: Request, q: str = "", type: str = "", source_repo: str = ""):
 
 @app.get("/memories/{memory_id}", response_class=HTMLResponse)
 def memory_detail(request: Request, memory_id: str):
-    memory = _get(f"/memories/{memory_id}")
-    if not memory:
+    memory = _get_one(f"/memories/{memory_id}")
+    if memory is None:
         return HTMLResponse("Not found", status_code=404)
     return templates.TemplateResponse("memory.html", {"request": request, "memory": memory})
