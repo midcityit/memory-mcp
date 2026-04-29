@@ -15,9 +15,12 @@ def parse_memory_file(path: Path) -> dict:
         post = frontmatter.loads(raw)
         name = post.get("name") or path.stem
         mem_type = post.get("type") or "reference"
-        body = post.content or post.get("description", "")
-        # Restore the trailing newline that python-frontmatter strips from the body
-        content = body if body.endswith("\n") else body + "\n" if body else body
+        body = post.content.strip()
+        if body:
+            # Restore the trailing newline that python-frontmatter strips from the body
+            content = body + "\n"
+        else:
+            content = post.get("description", "").strip() or raw.strip()
     except Exception:
         name = path.stem
         mem_type = "reference"
