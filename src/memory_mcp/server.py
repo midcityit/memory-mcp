@@ -1,3 +1,4 @@
+import dataclasses
 from fastapi import FastAPI, HTTPException, Depends, Security
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
@@ -70,7 +71,7 @@ def create_app() -> FastAPI:
     @app.post("/memories", dependencies=[Depends(require_token)], status_code=201)
     def save_memory(req: SaveRequest):
         now = MemoryStore.now_iso()
-        existing = store.list_memories(filter_source_repo=req.source_repo)
+        existing = store.list_memories(filter_source_repo=req.source_repo, limit=1000)
         match = next((r for r in existing if r.name == req.name), None)
         if match:
             record = store.update(match.id, req.content, req.tags)
@@ -104,9 +105,9 @@ def create_app() -> FastAPI:
 
 
 def _record_dict(r: MemoryRecord) -> dict:
-    d = r.__dict__.copy()
+    d = dataclasses.asdict(r)
     if r.stale:
-        d["stale_warning"] = "This memory is stale — verify it's still current"
+        d["stale_warning"] = "⚠️ This memory is stale — verify it's still current"
     return d
 
 
