@@ -1,9 +1,18 @@
 """MCP tool layer — wraps MemoryStore as MCP tools, mounted at /mcp."""
+import os
 from mcp.server.fastmcp import FastMCP
+from mcp.server.fastmcp.server import TransportSecuritySettings
 from memory_mcp.store import MemoryStore, MemoryRecord
 import dataclasses
 
-mcp = FastMCP("memory-twin", stateless_http=True, streamable_http_path="/")
+_allowed_hosts = [h.strip() for h in os.environ.get("MCP_ALLOWED_HOSTS", "localhost").split(",") if h.strip()]
+
+mcp = FastMCP(
+    "memory-twin",
+    stateless_http=True,
+    streamable_http_path="/",
+    transport_security=TransportSecuritySettings(allowed_hosts=_allowed_hosts),
+)
 
 
 def _init(store: MemoryStore) -> None:
