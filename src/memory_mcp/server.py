@@ -1,10 +1,14 @@
 import dataclasses
 from fastapi import FastAPI, HTTPException, Depends, Security
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from typing import Optional
 from memory_mcp.config import load_config, Config
 from memory_mcp.store import MemoryStore, MemoryRecord
+from memory_mcp import mcp_tools
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
 
 # auto_error=False so we can return 401 (not 403) when no Authorization header
 _security = HTTPBearer(auto_error=False)
@@ -14,6 +18,20 @@ def create_app() -> FastAPI:
     cfg = load_config()
     store = MemoryStore(qdrant_url=cfg.qdrant_url, stale_days=cfg.stale_days)
     app = FastAPI(title="memory-mcp")
+
+    # Mount MCP transport (streamable HTTP) at /mcp with bearer-token guard
+    mcp_tools._init(store)
+
+    class _BearerGuard(BaseHTTPMiddleware):
+        async def dispatch(self, request: Request, call_next):
+            auth = request.headers.get("Authorization", "")
+            if not auth.startswith("Bearer ") or auth[7:] != cfg.api_token:
+                return JSONResponse({"detail": "Unauthorized"}, status_code=401)
+            return await call_next(request)
+
+    mcp_app = mcp_tools.mcp.streamable_http_app()
+    mcp_app.add_middleware(_BearerGuard)
+    app.mount("/mcp", mcp_app)
 
     def require_token(
         credentials: Optional[HTTPAuthorizationCredentials] = Security(_security),
