@@ -71,8 +71,8 @@ def index(request: Request, q: str = "", type: str = "", source_repo: str = ""):
         repos = sorted({m["source_repo"] for m in all_data.get("memories", [])})
     else:
         repos = sorted({m["source_repo"] for m in memories})
-    return templates.TemplateResponse("index.html", {
-        "request": request, "memories": memories,
+    return templates.TemplateResponse(request=request, name="index.html", context={
+        "memories": memories,
         "q": q, "filter_type": type, "filter_source_repo": source_repo,
         "repos": repos,
     })
@@ -83,4 +83,4 @@ def memory_detail(request: Request, memory_id: str):
     memory = _get_one(f"/memories/{memory_id}")
     if memory is None:
         return HTMLResponse("Not found", status_code=404)
-    return templates.TemplateResponse("memory.html", {"request": request, "memory": memory})
+    return templates.TemplateResponse(request=request, name="memory.html", context={"memory": memory})
