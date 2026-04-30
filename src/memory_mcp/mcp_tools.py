@@ -3,7 +3,7 @@ from mcp.server.fastmcp import FastMCP
 from memory_mcp.store import MemoryStore, MemoryRecord
 import dataclasses
 
-mcp = FastMCP("memory-twin")
+mcp = FastMCP("memory-twin", stateless_http=True, streamable_http_path="/")
 
 
 def _init(store: MemoryStore) -> None:
