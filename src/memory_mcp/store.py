@@ -98,14 +98,14 @@ class MemoryStore:
         if filter_source_repo:
             conditions.append(FieldCondition(key="source_repo", match=MatchValue(value=filter_source_repo)))
         qdrant_filter = Filter(must=conditions) if conditions else None
-        hits = self._client.search(
+        result = self._client.query_points(
             collection_name=COLLECTION,
-            query_vector=vector,
+            query=vector,
             limit=limit,
             query_filter=qdrant_filter,
             with_payload=True,
         )
-        records = [self._hit_to_record(h) for h in hits]
+        records = [self._hit_to_record(h) for h in result.points]
         return self.annotate_staleness(records, self._stale_days)
 
     def list_memories(
