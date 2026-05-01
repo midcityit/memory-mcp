@@ -19,7 +19,7 @@ The next major milestone is an **Agent Orchestration Platform** — the ability 
 
 1. **Composability** — orchestrator agents call subordinate agents via MCP tools, not custom protocols
 2. **Idempotency** — task creation is safe to retry; same task ID for same (dispatcher, task_key) pair
-3. **Auth scoping** — agents can only read/write memories in their own namespace by default; escalation is explicit
+3. **Auth scoping** — `agent_scope` is stored as metadata for future use but is *never enforced*; all agents can read all memories to maximize continuity across sessions and tools
 4. **Observability** — all task state transitions emit structured log fields; tasks have a `status` lifecycle
 5. **Phased delivery** — Phase 1 ships a working MVP; Phase 2 adds advanced workflow features
 6. **Small team realism** — avoid distributed systems complexity; use Qdrant as the task store (already present), not a separate queue
@@ -73,11 +73,12 @@ class TaskRecord:
 
 ### Memory Record Changes (existing `memories` collection)
 
-Add optional `agent_scope` payload field — restricts which agents can read/write a memory.
+Add optional `agent_scope` payload field — stored as metadata for observability and future use, but **never enforced**. All agents can read and write all memories regardless of this field.
 
-- `agent_scope: null` → visible to all agents (current default, preserved for backward compat)
-- `agent_scope: "kiro-personal"` → only readable/writable by that agent
-- Migration: existing records get `agent_scope: null` via a one-time migration script
+- `agent_scope: null` → public (default for all existing and new records)
+- `agent_scope: "kiro-personal"` → annotated as agent-specific, but still readable by all agents
+
+Rationale: maximum continuity across agents and sessions is the priority. Enforcement can be opted into later if isolation requirements change.
 
 ---
 
@@ -202,21 +203,20 @@ All endpoints require bearer token auth (same middleware as existing routes).
 
 ## Agent Namespacing
 
-Memory scoping is opt-in. Agents pass `agent_scope` when saving sensitive memories:
+`agent_scope` is an **annotation-only** field — it is stored on memory records for observability and future filtering, but is never used to restrict reads or writes by any agent in any phase.
 
 ```python
-# Public memory (default)
+# All memories are visible to all agents regardless of agent_scope
 save_memory(type="reference", name="foo", content="...", source_repo="global")
 
-# Scoped memory — only readable by kiro-personal
+# Annotate as agent-specific for tracking, but still fully readable by all agents
 save_memory(type="reference", name="bar", content="...", source_repo="global",
             agent_scope="kiro-personal")
 ```
 
-The `search_memories` and `list_memories` tools will filter out scoped memories that don't match the calling agent's `agent_id` (passed as a query param or inferred from token if per-agent tokens are used).
+This design maximizes continuity — any agent can pick up context from any other agent's memories without permission gaps. If isolation is ever needed in the future, enforcement can be added as an explicit opt-in behind a feature flag.
 
-**Phase 1:** `agent_scope` is stored as a payload field but not yet enforced (just annotated).  
-**Phase 2:** Enforcement added — shared token with `X-Agent-Id` header, or per-agent tokens in Key Vault.
+**All phases:** `agent_scope` = annotation only. No enforcement, ever, unless explicitly requested.
 
 ---
 
@@ -280,13 +280,13 @@ def migrate_agent_scope(store: MemoryStore):
 
 ### Phase 2 — Full Orchestration (estimated: 3–5 days)
 
-**Goal:** Workflow chains, auth scoping enforcement, callback system.
+**Goal:** Workflow chains, callback system. Auth scoping enforcement intentionally omitted — annotation-only by design.
 
 - [ ] `WorkflowRecord` dataclass + `workflows` collection
 - [ ] MCP tools: `create_workflow`, `get_workflow_status`, `list_agents`
 - [ ] Workflow engine: sequential step execution, parallel fan-out
-- [ ] `agent_scope` enforcement in `search_memories` / `list_memories`
-- [ ] Per-agent token support (optional, Key Vault backed)
+- [ ] Per-agent token support (optional, Key Vault backed) — only if isolation is explicitly requested
+- [ ] `agent_scope` enforcement remains **off** unless Chris requests it
 - [ ] Callback system: HTTP POST on task completion with retry
 - [ ] REST: /orchestrate/workflows, /orchestrate/queue/{agent_id}, /orchestrate/tasks/{id}/cancel
 - [ ] Dashboard integration: expose orchestration state in memory-ui
@@ -301,7 +301,7 @@ def migrate_agent_scope(store: MemoryStore):
 - `test_agent_store.py` — CRUD for AgentRecord, list/filter, staleness
 - `test_task_store.py` — create/update/poll task lifecycle
 - `test_orchestration_tools.py` — MCP tool layer (mocked store)
-- `test_namespacing.py` — agent_scope enforcement on memory reads
+- `test_namespacing.py` — verify agent_scope field is stored and returned correctly (no enforcement testing needed)
 
 ### Integration Tests
 
