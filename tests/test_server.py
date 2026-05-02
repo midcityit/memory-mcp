@@ -10,6 +10,7 @@ def make_app():
             qdrant_url="http://localhost:6333",
             api_token="test-token",
             stale_days=30,
+            otlp_endpoint="",
         )
         from memory_mcp.server import create_app
         return create_app()
