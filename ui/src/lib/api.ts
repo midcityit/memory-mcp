@@ -44,7 +44,8 @@ export async function listMemories(params?: {
   if (params?.agent) sp.set("agent", params.agent);
   if (params?.tags) sp.set("tags", params.tags);
   const qs = sp.toString();
-  return apiFetch(`/memories${qs ? `?${qs}` : ""}`);
+  const data = await apiFetch(`/memories${qs ? `?${qs}` : ""}`);
+  return data.memories;
 }
 
 export async function getMemory(id: string): Promise<Memory> {
@@ -57,10 +58,11 @@ export async function searchMemories(
   filter_type?: string,
   filter_source_repo?: string
 ): Promise<SearchResult[]> {
-  return apiFetch("/memories/search", {
+  const data = await apiFetch("/memories/search", {
     method: "POST",
     body: JSON.stringify({ query, limit, filter_type, filter_source_repo }),
   });
+  return data.memories;
 }
 
 export async function createMemory(data: {
