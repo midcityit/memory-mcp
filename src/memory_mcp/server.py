@@ -8,6 +8,7 @@ from typing import Optional
 from memory_mcp.config import load_config, Config
 from memory_mcp.store import MemoryStore, MemoryRecord
 from memory_mcp import mcp_tools
+from memory_mcp.telemetry import setup_telemetry
 
 # auto_error=False so we can return 401 (not 403) when no Authorization header
 _security = HTTPBearer(auto_error=False)
@@ -15,6 +16,11 @@ _security = HTTPBearer(auto_error=False)
 
 def create_app() -> FastAPI:
     cfg = load_config()
+
+    # Bootstrap OTel before anything else
+    if cfg.otlp_endpoint:
+        setup_telemetry(cfg.otlp_endpoint)
+
     store = MemoryStore(qdrant_url=cfg.qdrant_url, stale_days=cfg.stale_days)
     mcp_tools._init(store)
 
@@ -24,6 +30,13 @@ def create_app() -> FastAPI:
             yield
 
     app = FastAPI(title="memory-mcp", lifespan=lifespan)
+
+    # Auto-instrument HTTP metrics (request count, duration)
+    try:
+        from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+        FastAPIInstrumentor.instrument_app(app)
+    except Exception:
+        pass  # graceful degradation if instrumentation unavailable
 
     # Guard /mcp with bearer token before routing to the MCP sub-app
     @app.middleware("http")

@@ -1,8 +1,10 @@
+import time
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone, timedelta
 from typing import Optional
 
+from opentelemetry import metrics
 from qdrant_client import QdrantClient
 from qdrant_client.models import (
     Distance, VectorParams, PointStruct, Filter,
@@ -13,6 +15,11 @@ from sentence_transformers import SentenceTransformer
 COLLECTION = "memories"
 EMBEDDING_MODEL = "all-MiniLM-L6-v2"
 VECTOR_DIM = 384
+
+_meter = metrics.get_meter("memory_mcp")
+_upsert_counter = _meter.create_counter("memory_mcp_upsert_total", description="Total upserts")
+_search_histogram = _meter.create_histogram("memory_mcp_search_duration_seconds", unit="s", description="Search latency")
+_memory_count_gauge: metrics.ObservableGauge | None = None
 
 
 @dataclass
@@ -35,6 +42,14 @@ class MemoryStore:
         self._model = SentenceTransformer(EMBEDDING_MODEL)
         self._stale_days = stale_days
         self._ensure_collection()
+        # Register observable gauge for memory count
+        global _memory_count_gauge
+        if _memory_count_gauge is None:
+            _memory_count_gauge = _meter.create_observable_gauge(
+                "memory_mcp_memory_count",
+                callbacks=[self._observe_memory_count],
+                description="Total memories stored",
+            )
 
     def _ensure_collection(self) -> None:
         existing = [c.name for c in self._client.get_collections().collections]
@@ -43,6 +58,13 @@ class MemoryStore:
                 collection_name=COLLECTION,
                 vectors_config=VectorParams(size=VECTOR_DIM, distance=Distance.COSINE),
             )
+
+    def _observe_memory_count(self, options):
+        try:
+            info = self._client.get_collection(COLLECTION)
+            yield metrics.Observation(info.points_count)
+        except Exception:
+            pass
 
     def _embed(self, text: str) -> list[float]:
         return self._model.encode(text).tolist()
@@ -82,6 +104,7 @@ class MemoryStore:
                 "updated_at": record.updated_at,
             })],
         )
+        _upsert_counter.add(1)
         return record
 
     def search(
@@ -91,6 +114,7 @@ class MemoryStore:
         filter_type: Optional[str] = None,
         filter_source_repo: Optional[str] = None,
     ) -> list[MemoryRecord]:
+        t0 = time.monotonic()
         vector = self._embed(query)
         conditions = []
         if filter_type:
@@ -104,6 +128,10 @@ class MemoryStore:
             limit=limit,
             query_filter=qdrant_filter,
             with_payload=True,
+        )
+        _search_histogram.record(
+            time.monotonic() - t0,
+            {"filter_type": filter_type or "", "filter_source_repo": filter_source_repo or ""},
         )
         records = [self._hit_to_record(h) for h in result.points]
         return self.annotate_staleness(records, self._stale_days)

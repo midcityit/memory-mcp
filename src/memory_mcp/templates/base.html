@@ -5,30 +5,84 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>{% block title %}Memory Twin{% endblock %}</title>
   <style>
+    :root {
+      --bg: #f8fafc; --fg: #1e293b; --muted: #64748b; --subtle: #475569;
+      --card-bg: #fff; --card-border: #e2e8f0;
+      --nav-bg: #1e293b; --nav-fg: #fff; --nav-link: #93c5fd;
+      --input-border: #cbd5e1; --input-bg: #fff;
+      --btn-bg: #2563eb; --btn-fg: #fff;
+      --pre-bg: #f1f5f9;
+      --badge-type-bg: #e0e7ff; --badge-type-fg: #3730a3;
+      --badge-stale-bg: #fef3c7; --badge-stale-fg: #92400e;
+      --link: #2563eb;
+    }
+    [data-theme="dark"] {
+      --bg: #0f172a; --fg: #e2e8f0; --muted: #94a3b8; --subtle: #cbd5e1;
+      --card-bg: #1e293b; --card-border: #334155;
+      --nav-bg: #020617; --nav-fg: #f1f5f9; --nav-link: #93c5fd;
+      --input-border: #475569; --input-bg: #1e293b;
+      --btn-bg: #3b82f6; --btn-fg: #fff;
+      --pre-bg: #1e293b;
+      --badge-type-bg: #312e81; --badge-type-fg: #c7d2fe;
+      --badge-stale-bg: #78350f; --badge-stale-fg: #fef3c7;
+      --link: #60a5fa;
+    }
+    @media (prefers-color-scheme: dark) {
+      html:not([data-theme="light"]) {
+        --bg: #0f172a; --fg: #e2e8f0; --muted: #94a3b8; --subtle: #cbd5e1;
+        --card-bg: #1e293b; --card-border: #334155;
+        --nav-bg: #020617; --nav-fg: #f1f5f9; --nav-link: #93c5fd;
+        --input-border: #475569; --input-bg: #1e293b;
+        --btn-bg: #3b82f6; --btn-fg: #fff;
+        --pre-bg: #1e293b;
+        --badge-type-bg: #312e81; --badge-type-fg: #c7d2fe;
+        --badge-stale-bg: #78350f; --badge-stale-fg: #fef3c7;
+        --link: #60a5fa;
+      }
+    }
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: system-ui, sans-serif; background: #f8fafc; color: #1e293b; line-height: 1.6; }
+    body { font-family: system-ui, sans-serif; background: var(--bg); color: var(--fg); line-height: 1.6; }
     .container { max-width: 800px; margin: 0 auto; padding: 1rem; }
-    nav { background: #1e293b; color: #fff; padding: .75rem 1rem; }
-    nav a { color: #93c5fd; text-decoration: none; font-weight: 600; font-size: 1.1rem; }
+    nav { background: var(--nav-bg); color: var(--nav-fg); padding: .75rem 1rem; display: flex; align-items: center; }
+    nav .container { display: flex; justify-content: space-between; align-items: center; }
+    nav a { color: var(--nav-link); text-decoration: none; font-weight: 600; font-size: 1.1rem; }
+    #theme-toggle { background: none; border: 1px solid var(--nav-link); color: var(--nav-link); border-radius: 6px; padding: .25rem .5rem; cursor: pointer; font-size: .85rem; }
     .badge { display: inline-block; font-size: .7rem; padding: .15rem .4rem; border-radius: 4px; font-weight: 600; }
-    .badge-stale { background: #fef3c7; color: #92400e; }
-    .badge-type { background: #e0e7ff; color: #3730a3; }
-    .card { background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 1rem; margin-bottom: .75rem; }
+    .badge-stale { background: var(--badge-stale-bg); color: var(--badge-stale-fg); }
+    .badge-type { background: var(--badge-type-bg); color: var(--badge-type-fg); }
+    .card { background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 8px; padding: 1rem; margin-bottom: .75rem; }
     .card h3 { font-size: 1rem; margin-bottom: .25rem; }
-    .card h3 a { color: #1e293b; text-decoration: none; }
-    .card h3 a:hover { color: #2563eb; }
-    .meta { font-size: .75rem; color: #64748b; margin-top: .25rem; }
+    .card h3 a { color: var(--fg); text-decoration: none; }
+    .card h3 a:hover { color: var(--link); }
+    .meta { font-size: .75rem; color: var(--muted); margin-top: .25rem; }
     .search-bar { display: flex; gap: .5rem; margin-bottom: 1rem; flex-wrap: wrap; }
-    .search-bar input, .search-bar select { padding: .5rem; border: 1px solid #cbd5e1; border-radius: 6px; font-size: .9rem; }
+    .search-bar input, .search-bar select { padding: .5rem; border: 1px solid var(--input-border); border-radius: 6px; font-size: .9rem; background: var(--input-bg); color: var(--fg); }
     .search-bar input[type=text] { flex: 1; min-width: 200px; }
-    .search-bar button { background: #2563eb; color: #fff; border: none; border-radius: 6px; padding: .5rem 1rem; cursor: pointer; font-size: .9rem; }
-    pre { background: #f1f5f9; padding: 1rem; border-radius: 6px; overflow-x: auto; font-size: .85rem; white-space: pre-wrap; }
+    .search-bar button { background: var(--btn-bg); color: var(--btn-fg); border: none; border-radius: 6px; padding: .5rem 1rem; cursor: pointer; font-size: .9rem; }
+    pre { background: var(--pre-bg); color: var(--fg); padding: 1rem; border-radius: 6px; overflow-x: auto; font-size: .85rem; white-space: pre-wrap; }
+    a { color: var(--link); }
   </style>
 </head>
 <body>
-  <nav><div class="container"><a href="/">🧠 Memory Twin</a></div></nav>
+  <nav><div class="container"><a href="/">🧠 Memory Twin</a><button id="theme-toggle">🌙</button></div></nav>
   <div class="container" style="margin-top:1.5rem">
     {% block content %}{% endblock %}
   </div>
+  <script>
+    (function(){
+      const btn = document.getElementById('theme-toggle');
+      const html = document.documentElement;
+      const stored = localStorage.getItem('theme');
+      if (stored) { html.setAttribute('data-theme', stored); }
+      function update() { btn.textContent = html.getAttribute('data-theme') === 'dark' ? '☀️' : '🌙'; }
+      update();
+      btn.addEventListener('click', function(){
+        const next = html.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+        html.setAttribute('data-theme', next);
+        localStorage.setItem('theme', next);
+        update();
+      });
+    })();
+  </script>
 </body>
 </html>

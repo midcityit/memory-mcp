@@ -25,11 +25,11 @@
       <span class="badge badge-type">{{ m.type }}</span>
       {% if m.stale %}<span class="badge badge-stale">⚠️ stale</span>{% endif %}
     </h3>
-    <p style="font-size:.875rem;color:#475569;margin:.25rem 0;">{{ m.content[:160] }}{% if m.content|length > 160 %}…{% endif %}</p>
+    <p style="font-size:.875rem;color:var(--subtle);margin:.25rem 0;">{{ m.content[:160] }}{% if m.content|length > 160 %}…{% endif %}</p>
     <div class="meta">{{ m.source_repo }} · {{ m.agent }} · {{ m.updated_at[:10] }}</div>
   </div>
   {% endfor %}
 {% else %}
-  <p style="color:#64748b;">No memories found.</p>
+  <p style="color:var(--muted);">No memories found.</p>
 {% endif %}
 {% endblock %}

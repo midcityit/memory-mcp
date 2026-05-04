@@ -7,10 +7,12 @@ def test_load_config_reads_env_vars(monkeypatch):
     monkeypatch.setenv("QDRANT_URL", "http://localhost:6333")
     monkeypatch.setenv("API_TOKEN", "test-token")
     monkeypatch.delenv("STALE_DAYS", raising=False)
+    monkeypatch.delenv("OTLP_ENDPOINT", raising=False)
     cfg = load_config()
     assert cfg.qdrant_url == "http://localhost:6333"
     assert cfg.api_token == "test-token"
     assert cfg.stale_days == 30
+    assert cfg.otlp_endpoint == "http://otel-collector.monitoring.svc.cluster.local:4317"
 
 
 def test_load_config_custom_stale_days(monkeypatch):
