@@ -1,3 +1,5 @@
+export const runtime = "edge";
+
 import { listMemories, searchMemories, type Memory } from "@/lib/api";
 import { MemoriesClient } from "./memories-client";
 

@@ -1,3 +1,5 @@
+export const runtime = "edge";
+
 import { getMemory } from "@/lib/api";
 import { MemoryDetail } from "./memory-detail";
 
