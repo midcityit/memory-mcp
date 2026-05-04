@@ -5,3 +5,9 @@ __pycache__/
 dist/
 build/
 .pytest_cache/
+
+# Next.js UI
+ui/node_modules/
+ui/.next/
+ui/.vercel/
+ui/out/
