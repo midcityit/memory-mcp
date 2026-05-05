@@ -25,12 +25,7 @@ graph TD
         S --> Q[(Qdrant :6333)]
     end
 
-    subgraph ui ["Web UI (:8001)"]
-        U[Jinja2 UI] -->|httpx| R
-    end
-
     M -->|Cloudflare Tunnel| CF[memory-mcp.chriscastrotech.com]
-    U -->|Cloudflare Tunnel| CF2[ziese-memory-ui.midcityit.com]
 ```
 
 ---
@@ -41,7 +36,7 @@ graph TD
 |---------|-------------|
 | **MCP tools** | `save_memory`, `search_memories`, `list_memories`, `delete_memory` via streamable-HTTP transport |
 | **REST API** | Full CRUD + semantic search at `/memories` |
-| **Web UI** | Read-only Jinja2 interface at `:8001` (rewrite to Next.js tracked in RCL-21) |
+| **Web UI** | Extracted to [midcityit/ziese-memory-ui](https://github.com/midcityit/ziese-memory-ui) — deployed via Cloudflare Pages |
 | **Semantic search** | Vector embeddings via `all-MiniLM-L6-v2` — search by meaning, not keywords |
 | **Upsert by name** | `save_memory` upserts within a `source_repo` namespace; no duplicate memories |
 | **Observability** | OpenTelemetry metrics + traces to OTLP collector; Grafana dashboards provisioned via tf-int |
@@ -105,14 +100,6 @@ services:
     depends_on:
       - qdrant
 
-  memory-ui:
-    image: ghcr.io/midcityit/memory-mcp:latest
-    command: uvicorn memory_mcp.ui:app --host 0.0.0.0 --port 8001
-    ports:
-      - "8001:8001"
-    environment:
-      MCP_URL: http://memory-mcp:8000
-      API_TOKEN: your-secret-token
 
 volumes:
   qdrant_data:
@@ -147,7 +134,7 @@ terraform apply -target=kubernetes_deployment.memory_mcp
 | `STALE_DAYS` | ❌ | `30` | Days before unused memories are evicted |
 | `MCP_ALLOWED_HOSTS` | ❌ | `localhost` | Comma-separated allowed hosts for MCP transport security |
 | `OTLP_ENDPOINT` | ❌ | `http://otel-collector.monitoring.svc.cluster.local:4317` | OpenTelemetry OTLP gRPC endpoint; leave unset to disable telemetry |
-| `MCP_URL` | ❌ (UI only) | `http://localhost:8000` | URL of the memory-mcp API (used by the Web UI container) |
+| `MCP_URL` | ❌ (UI only) | `http://localhost:8000` | URL of the memory-mcp API (used by the separate [ziese-memory-ui](https://github.com/midcityit/ziese-memory-ui) container) |
 
 ---
 
