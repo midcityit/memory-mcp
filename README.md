@@ -383,3 +383,60 @@ kubectl exec -n digital-twin qdrant-0 -- \
 - **Jira:** RCL project (RCL-26: performance overhaul)
 - **Grafana:** <https://grafana.chriscastrotech.com>
 - **Confluence:** [Infrastructure / memory-mcp](https://castrotech.atlassian.net/wiki/spaces/IN/pages/7077897)
+
+---
+
+## Agent Directives (for system prompts and agent configs)
+
+All agents with memory-twin access MUST follow these rules:
+
+```
+## Memory-Twin Rules (non-negotiable)
+
+1. SEARCH FIRST — Before starting work on any repo or task, call search_memories
+   with relevant keywords. Pull existing context (decisions, runbooks, project state)
+   before doing discovery from scratch. Never re-discover what is already known.
+
+2. SAVE AFTER WORK — After completing meaningful work, call save_memory with:
+   - Architecture decisions (with rationale)
+   - Runbooks and operational procedures
+   - Project state and current status
+   - Next steps and outstanding work
+   - Troubleshooting findings and fixes
+
+3. TRACK ACTIVE PROJECTS — Maintain project_state memories tagged "active-project"
+   so any agent or future session can resume without re-discovery.
+
+4. USE source_repo — Always set source_repo to the current repository name
+   (e.g., "infra-tf", "tf-int") or "global" for cross-project context.
+
+5. SET agent IDENTITY — Use the agent param to identify yourself
+   (kiro-cli, claude-code, copilot, openclaw, cowork, codex).
+
+6. UPSERT, DON'T DUPLICATE — save_memory with the same name + source_repo
+   updates the existing memory. Reuse names to keep context current.
+
+Apply these rules every session without being reminded.
+```
+
+### Embedding in Agent Configs
+
+Add this to your agent's system prompt or instructions file:
+
+```
+You have access to the memory-twin MCP server for persistent memory across sessions.
+
+ON SESSION START:
+  search_memories("<current repo or task keywords>")
+  search_memories("active-project")
+
+AFTER MEANINGFUL WORK:
+  save_memory(type="<appropriate>", name="<descriptive>", content="<findings>",
+              source_repo="<repo>", agent="<your-id>", tags=["relevant", "tags"])
+
+IMPORTANT:
+- list_memories default limit is 1000 — all memories returned in one call
+- Pagination available via limit + offset if needed
+- Upsert is O(1) — safe to call save_memory frequently
+- search_memories uses semantic search — use natural language queries
+```
