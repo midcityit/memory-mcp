@@ -63,7 +63,7 @@ def _init(store: MemoryStore) -> None:
         source_repo: str | None = None,
         agent: str | None = None,
         tags: str | None = None,
-        limit: int = 500,
+        limit: int = 1000,
         offset: str | None = None,
     ) -> dict:
         """List memories with optional filters. tags is comma-separated. Returns memories and next_offset for pagination."""

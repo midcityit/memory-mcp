@@ -8,6 +8,7 @@ class Config:
     api_token: str
     stale_days: int
     otlp_endpoint: str
+    default_list_limit: int
 
 
 def load_config() -> Config:
@@ -19,4 +20,5 @@ def load_config() -> Config:
             "OTLP_ENDPOINT",
             "http://otel-collector.monitoring.svc.cluster.local:4317",
         ),
+        default_list_limit=int(os.environ.get("DEFAULT_LIST_LIMIT", "1000")),
     )

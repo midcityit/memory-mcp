@@ -189,7 +189,7 @@ class MemoryStore:
         filter_source_repo: Optional[str] = None,
         filter_agent: Optional[str] = None,
         filter_tags: Optional[list[str]] = None,
-        limit: int = 500,
+        limit: int = 1000,
         offset: Optional[str] = None,
     ) -> tuple[list[MemoryRecord], Optional[str]]:
         """List memories with filtering and cursor-based pagination.

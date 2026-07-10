@@ -66,7 +66,7 @@ def create_app() -> FastAPI:
         source_repo: Optional[str] = None,
         agent: Optional[str] = None,
         tags: Optional[str] = None,
-        limit: int = 500,
+        limit: Optional[int] = None,
         offset: Optional[str] = None,
     ):
         tag_list = tags.split(",") if tags else None
@@ -75,7 +75,7 @@ def create_app() -> FastAPI:
             filter_source_repo=source_repo,
             filter_agent=agent,
             filter_tags=tag_list,
-            limit=limit,
+            limit=limit or cfg.default_list_limit,
             offset=offset,
         )
         result = {"memories": [_record_dict(r) for r in records]}
