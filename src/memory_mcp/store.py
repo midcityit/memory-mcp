@@ -189,8 +189,15 @@ class MemoryStore:
         filter_source_repo: Optional[str] = None,
         filter_agent: Optional[str] = None,
         filter_tags: Optional[list[str]] = None,
-        limit: int = 100,
-    ) -> list[MemoryRecord]:
+        limit: int = 500,
+        offset: Optional[str] = None,
+    ) -> tuple[list[MemoryRecord], Optional[str]]:
+        """List memories with filtering and cursor-based pagination.
+
+        Returns a tuple of (records, next_offset). If next_offset is None,
+        there are no more results. Pass next_offset as the offset parameter
+        to retrieve the next page.
+        """
         conditions = []
         if filter_type:
             conditions.append(FieldCondition(key="type", match=MatchValue(value=filter_type)))
@@ -201,14 +208,16 @@ class MemoryStore:
         if filter_tags:
             conditions.append(FieldCondition(key="tags", match=MatchAny(any=filter_tags)))
         qdrant_filter = Filter(must=conditions) if conditions else None
-        results, _ = self._client.scroll(
+        results, next_offset = self._client.scroll(
             collection_name=COLLECTION,
             scroll_filter=qdrant_filter,
             limit=limit,
+            offset=offset,
             with_payload=True,
         )
         records = [self._hit_to_record(r) for r in results]
-        return self.annotate_staleness(records, self._stale_days)
+        next_cursor = str(next_offset) if next_offset else None
+        return self.annotate_staleness(records, self._stale_days), next_cursor
 
     def get(self, memory_id: str) -> Optional[MemoryRecord]:
         results = self._client.retrieve(

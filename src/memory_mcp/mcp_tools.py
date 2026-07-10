@@ -63,16 +63,23 @@ def _init(store: MemoryStore) -> None:
         source_repo: str | None = None,
         agent: str | None = None,
         tags: str | None = None,
-    ) -> list[dict]:
-        """List memories with optional filters. tags is comma-separated."""
+        limit: int = 500,
+        offset: str | None = None,
+    ) -> dict:
+        """List memories with optional filters. tags is comma-separated. Returns memories and next_offset for pagination."""
         tag_list = tags.split(",") if tags else None
-        records = store.list_memories(
+        records, next_offset = store.list_memories(
             filter_type=type,
             filter_source_repo=source_repo,
             filter_agent=agent,
             filter_tags=tag_list,
+            limit=limit,
+            offset=offset,
         )
-        return [dataclasses.asdict(r) for r in records]
+        result = {"memories": [dataclasses.asdict(r) for r in records]}
+        if next_offset:
+            result["next_offset"] = next_offset
+        return result
 
     @mcp.tool()
     def delete_memory(memory_id: str) -> dict:

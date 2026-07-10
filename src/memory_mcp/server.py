@@ -66,15 +66,22 @@ def create_app() -> FastAPI:
         source_repo: Optional[str] = None,
         agent: Optional[str] = None,
         tags: Optional[str] = None,
+        limit: int = 500,
+        offset: Optional[str] = None,
     ):
         tag_list = tags.split(",") if tags else None
-        records = store.list_memories(
+        records, next_offset = store.list_memories(
             filter_type=type,
             filter_source_repo=source_repo,
             filter_agent=agent,
             filter_tags=tag_list,
+            limit=limit,
+            offset=offset,
         )
-        return {"memories": [_record_dict(r) for r in records]}
+        result = {"memories": [_record_dict(r) for r in records]}
+        if next_offset:
+            result["next_offset"] = next_offset
+        return result
 
     # ── REST get single ────────────────────────────────────────────────────────
     @app.get("/memories/{memory_id}", dependencies=[Depends(require_token)])
