@@ -2,11 +2,11 @@ name: CI
 
 on:
   pull_request:
-    branches: [main]
+    branches: [main, dev]
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, homelab]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

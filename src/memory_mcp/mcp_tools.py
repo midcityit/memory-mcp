@@ -29,8 +29,7 @@ def _init(store: MemoryStore) -> None:
     ) -> dict:
         """Save or update a memory by name within a source_repo."""
         now = MemoryStore.now_iso()
-        existing = store.list_memories(filter_source_repo=source_repo, limit=1000)
-        match = next((r for r in existing if r.name == name), None)
+        match = store.find_by_name(name, source_repo)
         if match:
             record = store.update(match.id, content, tags, type=type)
         else:

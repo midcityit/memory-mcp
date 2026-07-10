@@ -113,8 +113,7 @@ def create_app() -> FastAPI:
     @app.post("/memories", dependencies=[Depends(require_token)], status_code=201)
     def save_memory(req: SaveRequest):
         now = MemoryStore.now_iso()
-        existing = store.list_memories(filter_source_repo=req.source_repo, limit=1000)
-        match = next((r for r in existing if r.name == req.name), None)
+        match = store.find_by_name(req.name, req.source_repo)
         if match:
             record = store.update(match.id, req.content, req.tags, type=req.type)
         else:
