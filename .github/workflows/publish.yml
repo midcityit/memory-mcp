@@ -3,6 +3,7 @@ name: Publish
 on:
   push:
     branches: [main, dev]
+    tags: ["v*"]
 
 jobs:
   build-push:
@@ -25,9 +26,12 @@ jobs:
         id: meta
         with:
           images: ghcr.io/midcityit/memory-mcp
+          flavor: |
+            latest=false
           tags: |
             type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
             type=raw,value=dev,enable=${{ github.ref == 'refs/heads/dev' }}
+            type=ref,event=tag
             type=sha,prefix=,format=long
       - uses: docker/build-push-action@v6
         with:
