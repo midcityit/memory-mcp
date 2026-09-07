@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, patch
 
 
 def make_app():
-    with patch("memory_mcp.server.MemoryStore"), \
+    with patch("memory_mcp.server.MemoryStore") as mock_store_cls, \
          patch("memory_mcp.server.load_config") as mock_cfg:
         mock_cfg.return_value = MagicMock(
             qdrant_url="http://localhost:6333",
@@ -12,6 +12,7 @@ def make_app():
             stale_days=30,
             otlp_endpoint="",
         )
+        mock_store_cls.return_value.list_memories.return_value = ([], None)
         from memory_mcp.server import create_app
         return create_app()
 
