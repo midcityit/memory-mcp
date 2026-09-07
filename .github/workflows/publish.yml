@@ -23,6 +23,8 @@ jobs:
         id: meta
         with:
           images: ghcr.io/midcityit/memory-mcp
+          flavor: |
+            latest=false
           tags: |
             type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
             type=raw,value=dev,enable=${{ github.ref == 'refs/heads/dev' }}
