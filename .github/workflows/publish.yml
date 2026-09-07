@@ -41,7 +41,7 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: Trivy vulnerability scan
-        uses: aquasecurity/trivy-action@0.29.0
+        uses: aquasecurity/trivy-action@v0.36.0
         env:
           TRIVY_PLATFORM: linux/amd64
         with:
