@@ -47,7 +47,7 @@ def create_app() -> FastAPI:
                 return JSONResponse({"detail": "Unauthorized"}, status_code=401)
         return await call_next(request)
 
-    app.mount("/mcp", mcp_tools.mcp.streamable_http_app())
+    app.mount("/mcp", mcp_tools.streamable_http_app())
 
     def require_token(
         credentials: Optional[HTTPAuthorizationCredentials] = Security(_security),
