@@ -3,6 +3,7 @@ name: Publish
 on:
   push:
     branches: [main, dev]
+  workflow_dispatch: {}
 
 jobs:
   build-push:
@@ -38,3 +39,13 @@ jobs:
           platforms: linux/amd64,linux/arm64
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Trivy vulnerability scan
+        uses: aquasecurity/trivy-action@v0.36.0
+        env:
+          TRIVY_PLATFORM: linux/amd64
+        with:
+          image-ref: ghcr.io/midcityit/memory-mcp:${{ github.sha }}
+          format: table
+          severity: CRITICAL,HIGH,MEDIUM
+          exit-code: '0'
