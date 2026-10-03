@@ -73,7 +73,7 @@ class QdrantGraphStore:
             self.client.create_collection(ents, vectors_config=VectorParams(size=self.embedder.dim, distance=Distance.COSINE))
         if edges not in existing:
             self.client.create_collection(edges, vectors_config={})
-        self._index(ents, ["key", "provider", "kind", "type", "memory_ids"], ["valid_from_ts", "valid_to_ts"])
+        self._index(ents, ["key", "provider", "kind", "type", "memory_ids", "aliases", "native_id", "display_name"], ["valid_from_ts", "valid_to_ts"])
         self._index(edges, ["src", "dst", "relation", "evidence_memory_ids"], ["valid_from_ts", "valid_to_ts"])
 
     def ensure_xrefs(self) -> None:

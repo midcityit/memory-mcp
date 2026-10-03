@@ -139,3 +139,12 @@ def test_exact_matches(gs):
     # Filter by provider
     hits = gs.exact_matches("mcit", "alpha", EntityFilter(provider="kubernetes"))
     assert [e.key for e in hits] == ["kubernetes:a"]
+
+
+def test_exact_match_fields_are_indexed(qdrant, stub_embedder, monkeypatch):
+    calls = []
+    orig = qdrant.create_payload_index
+    monkeypatch.setattr(qdrant, "create_payload_index", lambda c, f, *a, **k: (calls.append((c, f)), orig(c, f, *a, **k))[1])
+    QdrantGraphStore(qdrant, stub_embedder).ensure_graph("mcit")
+    for f in ("aliases", "native_id", "display_name"):
+        assert (entities_collection("mcit"), f) in calls

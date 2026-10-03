@@ -31,6 +31,24 @@ def fit(result: dict, max_chars: int, list_keys: tuple[str, ...]) -> dict:
     return result
 
 
+def _clamp(n, lo: int, hi: int) -> int:
+    return max(lo, min(int(n), hi))
+
+
+def _parse_as_of(as_of: str | None) -> float | None:
+    try:
+        return iso_to_ts(as_of)
+    except (TypeError, ValueError):
+        raise KGError("invalid_native_id", f"'as_of' must be an ISO-8601 timestamp or date, got {as_of!r}",
+                      field="as_of")
+
+
+def _check_direction(direction: str, allowed: tuple[str, ...]) -> None:
+    if direction not in allowed:
+        raise KGError("invalid_native_id", f"'direction' must be one of {list(allowed)}, got {direction!r}",
+                      field="direction")
+
+
 def _edge_dict(e: Edge, graph: str | None = None) -> dict:
     d = {"src": e.src, "relation": e.relation, "dst": e.dst}
     if graph:
@@ -80,6 +98,7 @@ class KGQuery:
 
     # ── resolve ──────────────────────────────────────────────────────────────
     def resolve(self, query, graphs="*", provider=None, kind=None, type=None, include_retired=False, limit=10) -> dict:
+        limit = _clamp(limit, 1, 100)
         q = query.strip().lower()
         vec = self.store.embedder.embed(query)
         scored: dict[tuple[str, str], dict] = {}
@@ -115,7 +134,7 @@ class KGQuery:
     # ── get ──────────────────────────────────────────────────────────────────
     def get_entity(self, graph, key, as_of=None, include_history=False) -> dict:
         e = self._must_get(graph, key)
-        at = iso_to_ts(as_of)
+        at = _parse_as_of(as_of)
         outs = self.store.edges_from(graph, [key], at_ts=at)
         ins = self.store.edges_to(graph, [key], at_ts=at)
         cm = self._compact_map(graph, {x.dst for x in outs} | {x.src for x in ins})
@@ -145,6 +164,8 @@ class KGQuery:
     def find(self, graph, provider=None, kind=None, type=None, missing_relation=None, direction="out",
              include_retired=False, limit=100, cursor=None) -> dict:
         self.reg.require_graph(graph)
+        _check_direction(direction, ("in", "out"))
+        limit = _clamp(limit, 1, 1000)
         if missing_relation:
             self.reg.relation(missing_relation)
         filt = EntityFilter(provider=provider, kind=kind, type=type, include_retired=include_retired)
@@ -158,6 +179,9 @@ class KGQuery:
         original_count = len(page)
         result = {"items": [e.compact(graph) for e in page], "has_more": nxt is not None, "cursor": nxt}
         result = fit(result, self.max_chars, ("items",))
+        if not result["items"] and page:  # always make progress, even over budget
+            result["items"] = [page[0].compact(graph)]
+            result["truncated"] = True
         # If fit() trimmed items, update has_more and cursor
         trimmed_count = len(result["items"])
         if trimmed_count < original_count:
@@ -171,8 +195,10 @@ class KGQuery:
     # ── traverse ─────────────────────────────────────────────────────────────
     def traverse(self, graph, start, direction="both", relations=None, kinds=None, max_depth=3, as_of=None,
                  follow_xrefs=False, limit=200, max_chars=None) -> dict:
+        _check_direction(direction, ("in", "out", "both"))
+        limit = _clamp(limit, 1, 1000)
         root = self._must_get(graph, start)
-        at = iso_to_ts(as_of)
+        at = _parse_as_of(as_of)
         max_depth = max(0, min(int(max_depth), MAX_DEPTH))
         nodes: dict[str, dict] = {start: {**root.compact(), "depth": 0}}
         edges: dict[tuple, dict] = {}
@@ -264,7 +290,7 @@ class KGQuery:
     # ── impact ───────────────────────────────────────────────────────────────
     def impact(self, graph, key, max_depth=MAX_DEPTH, as_of=None) -> dict:
         root = self._must_get(graph, key)
-        at = iso_to_ts(as_of)
+        at = _parse_as_of(as_of)
         prop = self.reg.propagating_relations()
         seen, frontier, layers = {key}, [key], []
         for depth in range(1, max(1, min(int(max_depth), MAX_DEPTH)) + 1):
@@ -309,10 +335,20 @@ class KGQuery:
             out.append({"graph": g, "name": self.reg.graphs[g].get("name", g), "entities": len(current),
                         "by_kind": dict(Counter(e.kind for e in current)),
                         "by_provider": dict(Counter(e.provider for e in current)),
-                        "hubs": [{**cm[k], "degree": d} for k, d in hubs if k in cm],
+                        "hubs": [{"key": k, "display_name": cm[k].get("display_name", k), "degree": d}
+                                 for k, d in hubs if k in cm],
                         "recent": [e.compact() for e in recent],
                         "dangling_xrefs": sum(1 for x in self.store.xrefs_for_graph(g) if x.dangling)})
-        return fit({"graphs": out}, self.max_chars, ("graphs",))
+        result = {"graphs": out}
+        if _size(result) > self.max_chars:
+            result["truncated"] = True
+            # never drop a graph: trim recent, then hubs, round-robin across graphs
+            for field in ("recent", "hubs"):
+                while _size(result) > self.max_chars and any(g[field] for g in out):
+                    for g in out:
+                        if g[field] and _size(result) > self.max_chars:
+                            g[field].pop()
+        return result
 
     # ── cross-graph ──────────────────────────────────────────────────────────
     def related_across(self, graph, key, target_graphs="*", limit=10) -> dict:

@@ -30,7 +30,7 @@ def register(mcp, service, query) -> None:
     def kg_upsert_entity(graph: str, provider: str, type: str, native_id: str, display_name: str | None = None,
                          aliases: list[str] | None = None, properties: dict | None = None,
                          memory_ids: list[str] | None = None, agent: str = "claude-code") -> dict:
-        """Create/update a knowledge-graph entity. provider: azure|aws|gcp|vmware|hyperv|cloudflare|kubernetes|logical.
+        """Create/update a knowledge-graph entity. provider: azure|aws|gcp|vmware|hyperv|cloudflare|kubernetes|grafana|prometheus|netbox|logical.
         type: provider-native (e.g. Microsoft.ContainerService/managedClusters, AWS::EC2::VPC, apps/Deployment) or a
         Terraform type (azurerm_kubernetes_cluster). native_id: ARM ID / ARN / GCP full name /
         k8s '{cluster}/{ns|_cluster}/{group}/{Kind}/{name}' / Jira key. Call kg_resolve first to reuse keys."""

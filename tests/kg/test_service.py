@@ -188,3 +188,84 @@ def test_batch_collects_shape_errors_for_all_items(svc, gstore):
     }
     # Verify no entities were written
     assert list(gstore.iter_entities("mcit")) == []
+
+
+# ── final-review fixes ──────────────────────────────────────────────────────
+def _hist_edge(**kw):
+    return {"src": "kubernetes:mcit-k8s/digital-twin/apps/Deployment/a", "relation": "runs_on",
+            "dst": "kubernetes:mcit-k8s/_cluster/core/Node/n", **kw}
+
+
+def _hist_setup(svc):
+    dep(svc, "a")
+    node(svc, "n")
+
+
+def test_historical_edge_requires_valid_from(svc):
+    _hist_setup(svc)
+    r = svc.batch("mcit", [], [_hist_edge(valid_to="2026-05-01T00:00:00+00:00")])
+    assert r["status"] == "rejected" and r["errors"][0]["field"] == "valid_from"
+
+
+def test_inverted_interval_rejected(svc):
+    _hist_setup(svc)
+    r = svc.batch("mcit", [], [_hist_edge(valid_from="2026-06-01T00:00:00+00:00", valid_to="2026-05-01T00:00:00+00:00")])
+    assert r["status"] == "rejected" and r["errors"][0]["field"] in ("valid_from", "valid_to")
+    r = svc.batch("mcit", [{"provider": "logical", "type": "jira_issue", "native_id": "MCIT-7",
+                            "valid_to": "2026-05-01T00:00:00+00:00"}], [])
+    assert r["status"] == "rejected" and r["errors"][0]["field"] == "valid_from"
+    r = svc.batch("mcit", [{"provider": "logical", "type": "jira_issue", "native_id": "MCIT-7",
+                            "valid_from": "2026-06-01T00:00:00+00:00", "valid_to": "2026-05-01T00:00:00+00:00"}], [])
+    assert r["status"] == "rejected"
+    with pytest.raises(KGError) as e:
+        svc.upsert_entity("mcit", "logical", "jira_issue", "MCIT-8", valid_to="2026-05-01T00:00:00+00:00")
+    assert e.value.field == "valid_from"
+
+
+def test_link_accepts_valid_from_alone(svc):
+    _hist_setup(svc)
+    assert svc.link("mcit", _hist_edge()["src"], "runs_on", _hist_edge()["dst"],
+                    valid_from="2026-01-01T00:00:00+00:00")["status"] == "created"
+
+
+def test_historical_batch_is_idempotent(svc, gstore):
+    _hist_setup(svc)
+    e = _hist_edge(valid_from="2026-01-01T00:00:00+00:00", valid_to="2026-05-01T00:00:00+00:00")
+    for _ in range(2):
+        assert svc.batch("mcit", [], [e])["status"] == "ok"
+    assert len(gstore.edges_from("mcit", [e["src"]], include_retired=True)) == 1
+
+
+@pytest.mark.parametrize("kw,field", [
+    ({"display_name": "d" * 257}, "display_name"),
+    ({"aliases": ["a"] * 33}, "aliases"),
+    ({"aliases": ["a" * 257]}, "aliases"),
+])
+def test_field_caps(svc, kw, field):
+    with pytest.raises(KGError) as e:
+        svc.upsert_entity("mcit", "logical", "jira_issue", "MCIT-9", **kw)
+    assert e.value.code == "invalid_native_id" and e.value.field == field
+    r = svc.batch("mcit", [{"provider": "logical", "type": "jira_issue", "native_id": "MCIT-9", **kw}], [])
+    assert r["status"] == "rejected" and r["errors"][0]["field"] == field
+
+
+def test_native_id_cap(svc):
+    with pytest.raises(KGError) as e:
+        svc.upsert_entity("mcit", "logical", "jira_issue", "MCIT-" + "9" * 1030)
+    assert e.value.code == "invalid_native_id" and e.value.field == "native_id"
+
+
+def test_caps_allow_boundary(svc):
+    assert svc.upsert_entity("mcit", "logical", "jira_issue", "MCIT-10", display_name="d" * 256,
+                             aliases=["a" * 256] * 32)["status"] == "created"
+
+
+def test_batch_rejects_unknown_keys(svc):
+    _hist_setup(svc)
+    r = svc.batch("mcit", [{"provider": "logical", "type": "jira_issue", "native_id": "MCIT-11", "valid_form": "x"}], [])
+    assert r["status"] == "rejected" and r["errors"][0]["field"] == "valid_form"
+    assert r["errors"][0]["error"] == "invalid_native_id" and "allowed" in r["errors"][0]["message"].lower()
+    r = svc.batch("mcit", [], [_hist_edge(relaton="x")])
+    assert r["status"] == "rejected" and r["errors"][0]["field"] == "relaton"
+    assert r["errors"][0]["error"] == "invalid_native_id"
+    assert svc.batch("mcit", [], [_hist_edge(agent="me")])["status"] == "ok"

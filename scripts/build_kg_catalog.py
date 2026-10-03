@@ -6,6 +6,8 @@ Usage:
   python scripts/build_kg_catalog.py aws        scripts/kg_sources/aws_cfn_spec.json
   python scripts/build_kg_catalog.py gcp        scripts/kg_sources/gcp_asset_types.txt
   python scripts/build_kg_catalog.py cloudflare scripts/kg_sources/cloudflare_schema.json
+GCP source: https://cloud.google.com/asset-inventory/docs/resource-name-format (curl with a browser User-Agent;
+extract tokens with regex `[a-z0-9-]+\\.googleapis\\.com/[A-Z][A-Za-z0-9]*`).
 Writes src/memory_mcp/kg/catalog/<provider>.json and prints unmapped (kind=other) types to stderr.
 """
 from __future__ import annotations

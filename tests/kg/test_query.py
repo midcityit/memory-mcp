@@ -245,3 +245,64 @@ def test_resolve_exact_alias_and_native_id_rank_first(svc, kg_registry, gstore):
     # Query by native_id
     result = q.resolve("unique-a")["results"]
     assert result[0]["key"] == a_key and result[0]["score"] == 1.0
+
+
+# ── final-review fixes ──────────────────────────────────────────────────────
+@pytest.mark.parametrize("bad", ["yesterday", "2026-13-01"])
+def test_bad_as_of_rejected(q, bad):
+    for call in (lambda: q.traverse("mcit", TUN, as_of=bad), lambda: q.impact("mcit", DEP, as_of=bad),
+                 lambda: q.get_entity("mcit", DEP, as_of=bad)):
+        with pytest.raises(KGError) as e:
+            call()
+        assert e.value.code == "invalid_native_id" and e.value.field == "as_of"
+
+
+def test_date_only_as_of_still_works(q):
+    assert q.traverse("mcit", TUN, as_of="2026-09-20", max_depth=1)["nodes"]
+
+
+def test_bad_direction_rejected(q):
+    with pytest.raises(KGError) as e:
+        q.traverse("mcit", TUN, direction="sideways")
+    assert e.value.code == "invalid_native_id" and e.value.field == "direction"
+    with pytest.raises(KGError) as e:
+        q.find("mcit", missing_relation="runs_on", direction="both")
+    assert e.value.field == "direction"
+
+
+def test_overview_never_drops_graphs_when_over_budget(svc, kg_registry, gstore):
+    for g in ("mcit", "vtv"):
+        ents = [ent(f"logical:{g.upper()}-{i}", "jira_issue", f"issue number {i} for {g}") for i in range(40)]
+        edges = [{"src": f"logical:{g.upper()}-{i}", "relation": "depends_on", "dst": f"logical:{g.upper()}-{i + 1}"}
+                 for i in range(39)]
+        assert svc.batch(g, ents, edges)["status"] == "ok"
+    small = KGQuery(kg_registry, gstore, max_chars=1800).overview()
+    assert {g["graph"] for g in small["graphs"]} == {"mcit", "vtv"}
+    assert small["truncated"] is True
+    assert len(json.dumps(small, default=str)) <= 1800
+    assert all(set(h) == {"key", "display_name", "degree"} for g in small["graphs"] for h in g["hubs"])
+
+
+def test_find_paging_terminates_with_oversized_item(svc, kg_registry, gstore):
+    svc.upsert_entity("mcit", "logical", "jira_issue", "MCIT-1", display_name="x" * 250)
+    for i in range(2, 6):
+        svc.upsert_entity("mcit", "logical", "jira_issue", f"MCIT-{i}")
+    q2 = KGQuery(kg_registry, gstore, max_chars=200)
+    seen, cur = [], None
+    for _ in range(20):
+        r = q2.find("mcit", provider="logical", limit=3, cursor=cur)
+        assert r["items"]
+        seen += [i["key"] for i in r["items"]]
+        if not r["has_more"]:
+            break
+        cur = r["cursor"]
+    else:
+        pytest.fail("paging did not terminate")
+    assert sorted(seen) == sorted(f"logical:MCIT-{i}" for i in range(1, 6))
+
+
+def test_limits_are_clamped(q):
+    q.resolve("memory", limit=0)
+    q.find("mcit", limit=0)
+    q.traverse("mcit", TUN, limit=0)
+    q.resolve("memory", limit=10**6)

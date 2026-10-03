@@ -151,3 +151,9 @@ async def test_import_rejects_non_utf8_body(svc, kg_registry, gstore):
     async with client(make_app(svc, kg_registry, gstore)) as c:
         r = await c.post("/kg/mcit/import", content=b"\xff\xfe\n")
     assert r.status_code == 422 and r.json()["detail"]["error"] == "invalid_json"
+
+
+async def test_traverse_bad_as_of_is_422(seeded, kg_registry, gstore):
+    async with client(make_app(seeded, kg_registry, gstore)) as c:
+        r = await c.post("/kg/mcit/traverse", json={"start": DEP, "as_of": "yesterday"})
+    assert r.status_code == 422 and r.json()["detail"]["field"] == "as_of"

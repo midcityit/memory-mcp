@@ -15,6 +15,10 @@ ENTITY_FIELDS = ("provider", "type", "native_id", "display_name", "aliases", "pr
                  "valid_from", "valid_to")
 EDGE_FIELDS = ("src", "relation", "dst", "properties", "evidence_memory_ids", "valid_from", "valid_to", "retire_reason")
 
+MAX_DISPLAY_NAME = 256
+MAX_NATIVE_ID = 1024
+MAX_ALIASES = 32
+
 _meter = metrics.get_meter("memory_mcp.kg")
 _writes = _meter.create_counter("kg_writes_total", description="Knowledge graph writes")
 _errors = _meter.create_counter("kg_validation_errors_total", description="Knowledge graph validation errors")
@@ -37,6 +41,36 @@ def _check_iso(value: str | None, field: str) -> None:
         raise KGError("invalid_native_id", f"'{field}' must be an ISO-8601 timestamp, got {value!r}", field=field)
 
 
+def _check_interval(valid_from: str | None, valid_to: str | None) -> None:
+    _check_iso(valid_from, "valid_from")
+    _check_iso(valid_to, "valid_to")
+    if valid_to is None:
+        return
+    if valid_from is None:
+        raise KGError("invalid_native_id", "'valid_from' is required when 'valid_to' is given", field="valid_from")
+    if iso_to_ts(valid_from) >= iso_to_ts(valid_to):
+        raise KGError("invalid_native_id", "'valid_from' must be earlier than 'valid_to'", field="valid_to")
+
+
+def _check_caps(native_id, display_name, aliases) -> None:
+    if isinstance(native_id, str) and len(native_id) > MAX_NATIVE_ID:
+        raise KGError("invalid_native_id", f"native_id exceeds {MAX_NATIVE_ID} characters", field="native_id")
+    if isinstance(display_name, str) and len(display_name) > MAX_DISPLAY_NAME:
+        raise KGError("invalid_native_id", f"display_name exceeds {MAX_DISPLAY_NAME} characters", field="display_name")
+    if aliases:
+        if len(aliases) > MAX_ALIASES:
+            raise KGError("invalid_native_id", f"at most {MAX_ALIASES} aliases allowed", field="aliases")
+        if any(isinstance(a, str) and len(a) > MAX_DISPLAY_NAME for a in aliases):
+            raise KGError("invalid_native_id", f"each alias must be at most {MAX_DISPLAY_NAME} characters",
+                          field="aliases")
+
+
+def _check_keys(item: dict, allowed: tuple[str, ...]) -> None:
+    for k in item:
+        if k not in allowed:
+            raise KGError("invalid_native_id", f"unknown key {k!r}; allowed keys: {', '.join(allowed)}", field=k)
+
+
 class KGService:
     def __init__(self, registry, store, dup_threshold: float = 0.90):
         self.reg = registry
@@ -47,11 +81,11 @@ class KGService:
     def _prepare_entity(self, graph, provider, type, native_id, display_name=None, aliases=None, properties=None,
                         memory_ids=None, agent="claude-code", valid_from=None, valid_to=None) -> Entity:
         self.reg.require_graph(graph)
+        _check_caps(native_id, display_name, aliases)
         self.reg.require_provider(provider)
         td = self.reg.resolve_type(provider, type)
         nid = normalize_native_id(provider, td, native_id)
-        _check_iso(valid_from, "valid_from")
-        _check_iso(valid_to, "valid_to")
+        _check_interval(valid_from, valid_to)
         now = now_iso()
         return Entity(key=make_key(provider, nid), provider=provider, type=td.type, kind=td.kind, native_id=nid,
                       display_name=display_name or nid, aliases=_union([], aliases), properties=dict(properties or {}),
@@ -182,6 +216,7 @@ class KGService:
                 # Shape validation: must be dict
                 if not isinstance(item, dict):
                     raise KGError("invalid_native_id", f"entities[{i}] must be an object", field=None)
+                _check_keys(item, ENTITY_FIELDS + ("agent",))
                 # Validate required string fields
                 for field in ("provider", "type", "native_id"):
                     val = item.get(field)
@@ -205,6 +240,7 @@ class KGService:
                 # Shape validation: must be dict
                 if not isinstance(item, dict):
                     raise KGError("endpoint_not_found", f"edges[{i}] must be an object", field=None)
+                _check_keys(item, EDGE_FIELDS + ("agent",))
                 # Validate required string fields
                 for field in ("src", "dst", "relation"):
                     val = item.get(field)
@@ -218,8 +254,7 @@ class KGService:
                             raise KGError("unknown_relation", f"{field} must be a string, got {type(val).__name__}", field=field)
                         else:
                             raise KGError("endpoint_not_found", f"{field} must be a string, got {type(val).__name__}", field=field)
-                _check_iso(item.get("valid_from"), "valid_from")
-                _check_iso(item.get("valid_to"), "valid_to")
+                _check_interval(item.get("valid_from"), item.get("valid_to"))
                 self._check_edge(graph, item["src"], item["relation"], item["dst"],
                                  current=not item.get("valid_to"), pending=pending)
             except KGError as ex:
