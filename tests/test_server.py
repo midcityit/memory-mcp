@@ -11,6 +11,7 @@ def make_app():
             api_token="test-token",
             stale_days=30,
             otlp_endpoint="",
+            kg_enabled=False,
         )
         mock_store_cls.return_value.list_memories.return_value = ([], None)
         from memory_mcp.server import create_app

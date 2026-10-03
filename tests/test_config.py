@@ -35,3 +35,25 @@ def test_load_config_missing_api_token_raises(monkeypatch):
     monkeypatch.delenv("API_TOKEN", raising=False)
     with pytest.raises(KeyError):
         load_config()
+
+
+def test_kg_settings_default_off(monkeypatch):
+    monkeypatch.setenv("QDRANT_URL", "http://q:6333")
+    monkeypatch.setenv("API_TOKEN", "t")
+    for v in ("KG_ENABLED", "KG_CONFIG_DIR", "KG_DUP_THRESHOLD", "KG_MAX_CHARS"):
+        monkeypatch.delenv(v, raising=False)
+    from memory_mcp.config import load_config
+    c = load_config()
+    assert (c.kg_enabled, c.kg_config_dir, c.kg_dup_threshold, c.kg_max_chars) == (False, None, 0.90, 6000)
+
+
+def test_kg_settings_from_env(monkeypatch):
+    monkeypatch.setenv("QDRANT_URL", "http://q:6333")
+    monkeypatch.setenv("API_TOKEN", "t")
+    monkeypatch.setenv("KG_ENABLED", "True")
+    monkeypatch.setenv("KG_CONFIG_DIR", "/etc/kg")
+    monkeypatch.setenv("KG_DUP_THRESHOLD", "0.8")
+    monkeypatch.setenv("KG_MAX_CHARS", "9000")
+    from memory_mcp.config import load_config
+    c = load_config()
+    assert (c.kg_enabled, c.kg_config_dir, c.kg_dup_threshold, c.kg_max_chars) == (True, "/etc/kg", 0.8, 9000)
