@@ -1,0 +1,38 @@
+relations:
+  runs_on:          {inverse: runs,            impact: propagates, src_kinds: [compute, container], dst_kinds: [compute, container, host, org]}
+  hosted_on:        {inverse: hosts,           impact: propagates, src_kinds: [compute, container], dst_kinds: [compute, host]}
+  member_of:        {inverse: has_member}
+  contains:         {inverse: contained_in}
+  depends_on:       {inverse: dependency_of,   impact: propagates}
+  in_network:       {inverse: network_for,     impact: propagates}
+  attached_to:      {inverse: has_attached,    impact: propagates}
+  routes_to:        {inverse: routed_from,     impact: propagates}
+  resolves_to:      {inverse: resolved_from,   impact: propagates}
+  exposed_via:      {inverse: exposes,         impact: propagates}
+  secured_by:       {inverse: secures}
+  encrypted_by:     {inverse: encrypts,        impact: propagates}
+  authenticates_as: {inverse: identity_for,    impact: propagates}
+  has_role_on:      {inverse: grants_role_to}
+  connects_to:      {inverse: connected_from}
+  peers_with:       {inverse: peers_with}
+  replicates_to:    {inverse: replicated_from}
+  backs_up_to:      {inverse: backup_of}
+  logs_to:          {inverse: receives_logs_from}
+  deployed_by:      {inverse: deploys,         dst_kinds: [work]}
+  defined_in:       {inverse: defines,         dst_kinds: [work]}
+  managed_by:       {inverse: manages}
+  tracked_in:       {inverse: tracks,          dst_kinds: [work]}
+  documented_in:    {inverse: documents,       dst_kinds: [work]}
+  monitors:         {inverse: monitored_by}
+  sends_metrics_to: {inverse: receives_metrics_from}
+  sends_traces_to:  {inverse: receives_traces_from}
+  queries:          {inverse: queried_by,      impact: propagates}
+  reads_from:       {inverse: read_by,         impact: propagates}
+  notifies:         {inverse: notified_by,     impact: propagates}
+  served_by:        {inverse: serves,          impact: propagates}
+  visualizes:       {inverse: visualized_by}
+  recorded_in:      {inverse: records,         dst_kinds: [inventory]}
+  pattern_from:           {inverse: pattern_for,           class: reference}
+  lessons_from:           {inverse: lessons_for,           class: reference}
+  similar_to:             {inverse: similar_to,            class: reference}
+  supersedes_approach_of: {inverse: approach_superseded_by, class: reference}
