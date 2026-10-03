@@ -7,7 +7,7 @@ from collections import Counter
 from datetime import datetime, timedelta, timezone
 from typing import Callable
 
-from memory_mcp.kg.models import Edge, Entity, KGError, fq_key, iso_to_ts
+from memory_mcp.kg.models import Edge, Entity, KGError, entity_point_id, fq_key, iso_to_ts
 from memory_mcp.kg.store import EntityFilter
 
 MAX_DEPTH = 6
@@ -86,12 +86,26 @@ class KGQuery:
         for g in self.reg.graph_ids(graphs):
             filt = EntityFilter(provider=provider, kind=kind, type=type, include_retired=include_retired)
             hits = self.store.search_entities(g, vec, filt, limit * 2)
-            exact = self.store.get_entity(g, query)
-            if exact and (include_retired or exact.valid_to is None):
-                hits.append((exact, 1.0))
+            # Collect exact matches (key, aliases, native_id, display_name)
+            exact_hits = []
+            # Try key lookup with filters applied
+            key_entity = self.store.get_entity(g, query)
+            if key_entity:
+                # Check if it passes the filter conditions
+                if (include_retired or key_entity.valid_to is None) and \
+                   (provider is None or key_entity.provider == provider) and \
+                   (kind is None or key_entity.kind == kind) and \
+                   (type is None or key_entity.type == type):
+                    exact_hits.append(key_entity)
+            # Get exact matches on alias, native_id, display_name
+            exact_hits.extend(self.store.exact_matches(g, query, filt, limit * 2))
+            # Deduplicate and add to hits with score 1.0
+            exact_keys = {e.key for e in exact_hits}
+            for e in exact_hits:
+                hits = [(e, 1.0)] + [(he, s) for he, s in hits if he.key != e.key]
             for e, s in hits:
                 names = {e.key.lower(), e.native_id.lower(), e.display_name.lower(), *(a.lower() for a in e.aliases)}
-                score = 1.0 if q in names else round(float(s), 4)
+                score = 1.0 if e.key in exact_keys else (1.0 if q in names else round(float(s), 4))
                 prev = scored.get((g, e.key))
                 if prev is None or score > prev["score"]:
                     scored[(g, e.key)] = {**e.compact(g), "score": score, "retired": e.valid_to is not None}
@@ -140,8 +154,19 @@ class KGQuery:
             edges = (self.store.edges_from if direction == "out" else self.store.edges_to)(graph, ks, [missing_relation])
             have = {x.src if direction == "out" else x.dst for x in edges}
             page = [e for e in page if e.key not in have]
+        # Track original item count before fit() trims
+        original_count = len(page)
         result = {"items": [e.compact(graph) for e in page], "has_more": nxt is not None, "cursor": nxt}
-        return fit(result, self.max_chars, ("items",))
+        result = fit(result, self.max_chars, ("items",))
+        # If fit() trimmed items, update has_more and cursor
+        trimmed_count = len(result["items"])
+        if trimmed_count < original_count:
+            result["has_more"] = True
+            # Set cursor to the point_id of the first dropped item
+            if trimmed_count < len(page):
+                first_dropped = page[trimmed_count]
+                result["cursor"] = str(entity_point_id(first_dropped.key))
+        return result
 
     # ── traverse ─────────────────────────────────────────────────────────────
     def traverse(self, graph, start, direction="both", relations=None, kinds=None, max_depth=3, as_of=None,

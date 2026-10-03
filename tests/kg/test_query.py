@@ -187,3 +187,61 @@ def test_fit_trims_lists_and_stays_valid():
     big = {"items": [{"k": "x" * 50} for _ in range(100)]}
     out = fit(big, 500, ("items",))
     assert out["truncated"] is True and len(json.dumps(out)) <= 500
+
+
+def test_find_truncation_keeps_paging(svc, kg_registry, gstore):
+    """When fit() trims items, has_more and cursor are updated so paging works."""
+    # Create ~120 entities with large compact forms
+    ents = [{"provider": "logical", "type": "workload", "native_id": f"w{i:04d}",
+             "display_name": f"worker {i:04d} with a moderately long description to increase size"}
+            for i in range(120)]
+    assert svc.batch("mcit", ents, [])["status"] == "ok"
+
+    q = KGQuery(kg_registry, gstore)
+    # Find with limit=100 and a budget that will trim some items
+    first = q.find("mcit", limit=100)
+    assert first["truncated"] is True and first["has_more"] is True
+    assert len(first["items"]) < 100
+
+    # Page through remaining items
+    seen = {n["key"] for n in first["items"]}
+    page_num = 1
+    while first["has_more"]:
+        first = q.find("mcit", limit=100, cursor=first["cursor"])
+        page_num += 1
+        new_items = {n["key"] for n in first["items"]}
+        assert len(new_items & seen) == 0, "Pages should not overlap"
+        seen.update(new_items)
+
+    # Should have retrieved all 120 entities
+    assert len(seen) == 120
+
+
+def test_resolve_exact_key_respects_filters(q):
+    """resolve(key, kind=X) filters the result by kind."""
+    # DEP is a container; should be found with kind="container"
+    result = q.resolve(DEP, kind="container")["results"]
+    assert any(r["key"] == DEP for r in result)
+
+    # DEP should NOT be found with kind="host"
+    result = q.resolve(DEP, kind="host")["results"]
+    assert not any(r["key"] == DEP for r in result)
+
+
+def test_resolve_exact_alias_and_native_id_rank_first(svc, kg_registry, gstore):
+    """Exact match on alias and native_id score 1.0 and rank first."""
+    # Create entities with distinct names
+    a_key = svc.upsert_entity("mcit", "logical", "workload", "unique-a",
+                              display_name="unique-a", aliases=["my-alias"])["key"]
+    b_key = svc.upsert_entity("mcit", "logical", "workload", "unique-b",
+                              display_name="unique-b", aliases=["my-alias-variant"])["key"]
+
+    q = KGQuery(kg_registry, gstore)
+
+    # Query by alias
+    result = q.resolve("my-alias")["results"]
+    assert result[0]["key"] == a_key and result[0]["score"] == 1.0
+
+    # Query by native_id
+    result = q.resolve("unique-a")["results"]
+    assert result[0]["key"] == a_key and result[0]["score"] == 1.0

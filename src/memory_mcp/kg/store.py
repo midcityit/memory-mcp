@@ -134,6 +134,30 @@ class QdrantGraphStore:
     def count_entities(self, graph: str, filt: EntityFilter) -> int:
         return self.client.count(entities_collection(graph), count_filter=self._entity_filter(filt), exact=True).count
 
+    def exact_matches(self, graph: str, text: str, filt: EntityFilter, limit: int = 5) -> list[Entity]:
+        """Find entities matching text exactly on aliases, native_id, or display_name, respecting filters."""
+        must = []
+        if filt.provider:
+            must.append(_eq("provider", filt.provider))
+        if filt.kind:
+            must.append(_eq("kind", filt.kind))
+        if filt.type:
+            must.append(_eq("type", filt.type))
+        if filt.memory_id:
+            must.append(FieldCondition(key="memory_ids", match=MatchAny(any=[filt.memory_id])))
+        must += _time_conditions(filt.at_ts, filt.include_retired)
+        # Build should clause: aliases contains text OR native_id equals text OR display_name equals text
+        exact_filter = Filter(
+            must=must,
+            should=[
+                FieldCondition(key="aliases", match=MatchAny(any=[text])),
+                _eq("native_id", text),
+                _eq("display_name", text),
+            ],
+        )
+        pts = self.client.query_points(entities_collection(graph), query_filter=exact_filter, limit=limit, with_payload=True).points
+        return [Entity.from_payload(p.payload) for p in pts]
+
     def iter_entities(self, graph: str) -> Iterator[Entity]:
         for p in self._scroll_all(entities_collection(graph), None):
             yield Entity.from_payload(p.payload)

@@ -3,9 +3,9 @@ from memory_mcp.kg.models import Edge, Entity, XRef, iso_to_ts, now_iso
 from memory_mcp.kg.store import EntityFilter, QdrantGraphStore, entities_collection, edges_collection
 
 
-def ent(key, kind="container", typ="apps/Deployment", name=None, provider="kubernetes", vf="2026-01-01T00:00:00+00:00", vt=None, mem=None):
+def ent(key, kind="container", typ="apps/Deployment", name=None, provider="kubernetes", vf="2026-01-01T00:00:00+00:00", vt=None, mem=None, aliases=None):
     return Entity(key=key, provider=provider, type=typ, kind=kind, native_id=key.split(":", 1)[1],
-                  display_name=name or key, memory_ids=mem or [], valid_from=vf, valid_to=vt,
+                  display_name=name or key, aliases=aliases or [], memory_ids=mem or [], valid_from=vf, valid_to=vt,
                   created_at=vf, updated_at=vf)
 
 
@@ -107,3 +107,35 @@ def test_xrefs(gs):
     assert len(gs.xrefs_for_graph("vtv")) == 1
     assert gs.mark_xrefs_dangling("mcit::logical:MCIT-184") == 1
     assert gs.xrefs_touching("mcit::logical:MCIT-184")[0].dangling is True
+
+
+def test_exact_matches(gs):
+    """exact_matches finds entities by alias, native_id, display_name; respects filters and retirement."""
+    gs.upsert_entity("mcit", ent("kubernetes:a", name="alpha", kind="container"))
+    gs.upsert_entity("mcit", ent("kubernetes:b", name="beta", kind="network", aliases=["my-alias"]))
+    gs.upsert_entity("mcit", ent("kubernetes:c", name="gamma", kind="container",
+                                  vt="2026-02-01T00:00:00+00:00", aliases=["my-alias"]))  # retired
+
+    # Match by alias (retired excluded by default)
+    hits = gs.exact_matches("mcit", "my-alias", EntityFilter())
+    assert {e.key for e in hits} == {"kubernetes:b"}
+
+    # Retired included
+    hits = gs.exact_matches("mcit", "my-alias", EntityFilter(include_retired=True))
+    assert {e.key for e in hits} == {"kubernetes:b", "kubernetes:c"}
+
+    # Match by native_id (native_id is the part after ":")
+    hits = gs.exact_matches("mcit", "a", EntityFilter())
+    assert [e.key for e in hits] == ["kubernetes:a"]
+
+    # Match by display_name
+    hits = gs.exact_matches("mcit", "beta", EntityFilter())
+    assert [e.key for e in hits] == ["kubernetes:b"]
+
+    # Filter by kind
+    hits = gs.exact_matches("mcit", "my-alias", EntityFilter(kind="container", include_retired=True))
+    assert [e.key for e in hits] == ["kubernetes:c"]  # only the retired container
+
+    # Filter by provider
+    hits = gs.exact_matches("mcit", "alpha", EntityFilter(provider="kubernetes"))
+    assert [e.key for e in hits] == ["kubernetes:a"]
