@@ -6,11 +6,10 @@ from memory_mcp.store import MemoryStore, MemoryRecord
 
 def make_store():
     with patch("memory_mcp.store.QdrantClient"), \
-         patch("memory_mcp.store.SentenceTransformer"):
+         patch("memory_mcp.embedding.SentenceTransformer") as st:
+        st.return_value.encode.return_value = MagicMock(tolist=lambda: [0.1] * 384)
         store = MemoryStore(qdrant_url="http://localhost:6333", stale_days=30)
         store._client = MagicMock()
-        store._model = MagicMock()
-        store._model.encode.return_value = [0.1] * 384
         return store
 
 

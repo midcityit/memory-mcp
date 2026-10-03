@@ -1,0 +1,2988 @@
+{
+"provider": "gcp",
+"types": [
+{
+"type": "accessapproval.googleapis.com/AccessApprovalSettings",
+"kind": "other",
+"aliases": []
+},
+{
+"type": "accesscontextmanager.googleapis.com/AccessLevel",
+"kind": "security",
+"aliases": []
+},
+{
+"type": "accesscontextmanager.googleapis.com/AccessPolicy",
+"kind": "security",
+"aliases": []
+},
+{
+"type": "accesscontextmanager.googleapis.com/AuthorizedOrgsDesc",
+"kind": "security",
+"aliases": []
+},
+{
+"type": "accesscontextmanager.googleapis.com/ServicePerimeter",
+"kind": "security",
+"aliases": []
+},
+{
+"type": "agentidentity.googleapis.com/AuthProvider",
+"kind": "other",
+"aliases": []
+},
+{
+"type": "aiplatform.googleapis.com/BatchPredictionJob",
+"kind": "ai",
+"aliases": []
+},
+{
+"type": "aiplatform.googleapis.com/CachedContent",
+"kind": "ai",
+"aliases": []
+},
+{
+"type": "aiplatform.googleapis.com/CustomJob",
+"kind": "ai",
+"aliases": []
+},
+{
+"type": "aiplatform.googleapis.com/DataLabelingJob",
+"kind": "ai",
+"aliases": []
+},
+{
+"type": "aiplatform.googleapis.com/Dataset",
+"kind": "ai",
+"aliases": []
+},
+{
+"type": "aiplatform.googleapis.com/DeploymentResourcePool",
+"kind": "ai",
+"aliases": []
+},
+{
+"type": "aiplatform.googleapis.com/Endpoint",
+"kind": "ai",
+"aliases": []
+},
+{
+"type": "aiplatform.googleapis.com/FeatureGroup",
+"kind": "ai",
+"aliases": []
+},
+{
+"type": "aiplatform.googleapis.com/FeatureOnlineStore",
+"kind": "ai",
+"aliases": []
+},
+{
+"type": "aiplatform.googleapis.com/Featurestore",
+"kind": "ai",
+"aliases": []
+},
+{
+"type": "aiplatform.googleapis.com/HyperparameterTuningJob",
+"kind": "ai",
+"aliases": []
+},
+{
+"type": "aiplatform.googleapis.com/Index",
+"kind": "ai",
+"aliases": []
+},
+{
+"type": "aiplatform.googleapis.com/IndexEndpoint",
+"kind": "ai",
+"aliases": []
+},
+{
+"type": "aiplatform.googleapis.com/MetadataStore",
+"kind": "ai",
+"aliases": []
+},
+{
+"type": "aiplatform.googleapis.com/Model",
+"kind": "ai",
+"aliases": []
+},
+{
+"type": "aiplatform.googleapis.com/ModelDeploymentMonitoringJob",
+"kind": "ai",
+"aliases": []
+},
+{
+"type": "aiplatform.googleapis.com/NasJob",
+"kind": "ai",
+"aliases": []
+},
+{
+"type": "aiplatform.googleapis.com/NotebookExecutionJob",
+"kind": "ai",
+"aliases": []
+},
+{
+"type": "aiplatform.googleapis.com/NotebookRuntime",
+"kind": "ai",
+"aliases": []
+},
+{
+"type": "aiplatform.googleapis.com/NotebookRuntimeTemplate",
+"kind": "ai",
+"aliases": []
+},
+{
+"type": "aiplatform.googleapis.com/PipelineJob",
+"kind": "ai",
+"aliases": []
+},
+{
+"type": "aiplatform.googleapis.com/ReasoningEngine",
+"kind": "ai",
+"aliases": []
+},
+{
+"type": "aiplatform.googleapis.com/SpecialistPool",
+"kind": "ai",
+"aliases": []
+},
+{
+"type": "aiplatform.googleapis.com/Tensorboard",
+"kind": "ai",
+"aliases": []
+},
+{
+"type": "aiplatform.googleapis.com/TrainingPipeline",
+"kind": "ai",
+"aliases": []
+},
+{
+"type": "aiplatform.googleapis.com/TuningJob",
+"kind": "ai",
+"aliases": []
+},
+{
+"type": "alloydb.googleapis.com/Backup",
+"kind": "database",
+"aliases": []
+},
+{
+"type": "alloydb.googleapis.com/Cluster",
+"kind": "database",
+"aliases": []
+},
+{
+"type": "alloydb.googleapis.com/Instance",
+"kind": "database",
+"aliases": []
+},
+{
+"type": "analyticshub.googleapis.com/DataExchange",
+"kind": "analytics",
+"aliases": []
+},
+{
+"type": "analyticshub.googleapis.com/Listing",
+"kind": "analytics",
+"aliases": []
+},
+{
+"type": "anthos.googleapis.com/ConnectedCluster",
+"kind": "container",
+"aliases": []
+},
+{
+"type": "apigateway.googleapis.com/Api",
+"kind": "integration",
+"aliases": []
+},
+{
+"type": "apigateway.googleapis.com/ApiConfig",
+"kind": "integration",
+"aliases": []
+},
+{
+"type": "apigateway.googleapis.com/Gateway",
+"kind": "integration",
+"aliases": []
+},
+{
+"type": "apigee.googleapis.com/ApiProxy",
+"kind": "integration",
+"aliases": []
+},
+{
+"type": "apigee.googleapis.com/ApiProxyRevision",
+"kind": "integration",
+"aliases": []
+},
+{
+"type": "apigee.googleapis.com/Environment",
+"kind": "integration",
+"aliases": []
+},
+{
+"type": "apigee.googleapis.com/Instance",
+"kind": "integration",
+"aliases": []
+},
+{
+"type": "apigee.googleapis.com/Organization",
+"kind": "integration",
+"aliases": []
+},
+{
+"type": "apigee.googleapis.com/SecurityAction",
+"kind": "integration",
+"aliases": []
+},
+{
+"type": "apigee.googleapis.com/SecurityMonitoringCondition",
+"kind": "integration",
+"aliases": []
+},
+{
+"type": "apigee.googleapis.com/SecurityProfileV2",
+"kind": "integration",
+"aliases": []
+},
+{
+"type": "apihub.googleapis.com/ApiHubInstance",
+"kind": "other",
+"aliases": []
+},
+{
+"type": "apikeys.googleapis.com/Key",
+"kind": "identity",
+"aliases": []
+},
+{
+"type": "appengine.googleapis.com/Application",
+"kind": "compute",
+"aliases": []
+},
+{
+"type": "appengine.googleapis.com/Service",
+"kind": "compute",
+"aliases": []
+},
+{
+"type": "appengine.googleapis.com/Version",
+"kind": "compute",
+"aliases": []
+},
+{
+"type": "apphub.googleapis.com/Application",
+"kind": "other",
+"aliases": []
+},
+{
+"type": "apphub.googleapis.com/Service",
+"kind": "other",
+"aliases": []
+},
+{
+"type": "apphub.googleapis.com/ServiceProjectAttachment",
+"kind": "other",
+"aliases": []
+},
+{
+"type": "apphub.googleapis.com/Workload",
+"kind": "other",
+"aliases": []
+},
+{
+"type": "artifactregistry.googleapis.com/DockerImage",
+"kind": "container",
+"aliases": []
+},
+{
+"type": "artifactregistry.googleapis.com/MavenArtifact",
+"kind": "container",
+"aliases": []
+},
+{
+"type": "artifactregistry.googleapis.com/NpmPackage",
+"kind": "container",
+"aliases": []
+},
+{
+"type": "artifactregistry.googleapis.com/PythonPackage",
+"kind": "container",
+"aliases": []
+},
+{
+"type": "artifactregistry.googleapis.com/Repository",
+"kind": "container",
+"aliases": []
+},
+{
+"type": "artifactregistry.googleapis.com/Rule",
+"kind": "container",
+"aliases": []
+},
+{
+"type": "assuredworkloads.googleapis.com/Workload",
+"kind": "org",
+"aliases": []
+},
+{
+"type": "backupdr.googleapis.com/Backup",
+"kind": "storage",
+"aliases": []
+},
+{
+"type": "backupdr.googleapis.com/BackupPlan",
+"kind": "storage",
+"aliases": []
+},
+{
+"type": "backupdr.googleapis.com/BackupPlanAssociation",
+"kind": "storage",
+"aliases": []
+},
+{
+"type": "backupdr.googleapis.com/BackupPlanRevision",
+"kind": "storage",
+"aliases": []
+},
+{
+"type": "backupdr.googleapis.com/BackupVault",
+"kind": "storage",
+"aliases": []
+},
+{
+"type": "backupdr.googleapis.com/DataSource",
+"kind": "storage",
+"aliases": []
+},
+{
+"type": "backupdr.googleapis.com/DataSourceReference",
+"kind": "storage",
+"aliases": []
+},
+{
+"type": "backupdr.googleapis.com/ManagementServer",
+"kind": "storage",
+"aliases": []
+},
+{
+"type": "batch.googleapis.com/Job",
+"kind": "compute",
+"aliases": []
+},
+{
+"type": "beyondcorp.googleapis.com/AppConnection",
+"kind": "network",
+"aliases": []
+},
+{
+"type": "beyondcorp.googleapis.com/AppConnector",
+"kind": "network",
+"aliases": []
+},
+{
+"type": "beyondcorp.googleapis.com/AppGateway",
+"kind": "network",
+"aliases": []
+},
+{
+"type": "beyondcorp.googleapis.com/ClientConnectorService",
+"kind": "network",
+"aliases": []
+},
+{
+"type": "beyondcorp.googleapis.com/ClientGateway",
+"kind": "network",
+"aliases": []
+},
+{
+"type": "bigquery.googleapis.com/Dataset",
+"kind": "analytics",
+"aliases": []
+},
+{
+"type": "bigquery.googleapis.com/Model",
+"kind": "analytics",
+"aliases": []
+},
+{
+"type": "bigquery.googleapis.com/Routine",
+"kind": "analytics",
+"aliases": []
+},
+{
+"type": "bigquery.googleapis.com/RowAccessPolicy",
+"kind": "analytics",
+"aliases": []
+},
+{
+"type": "bigquery.googleapis.com/Table",
+"kind": "analytics",
+"aliases": []
+},
+{
+"type": "bigquerydatatransfer.googleapis.com/TransferConfig",
+"kind": "analytics",
+"aliases": []
+},
+{
+"type": "bigquerymigration.googleapis.com/MigrationWorkflow",
+"kind": "other",
+"aliases": []
+},
+{
+"type": "bigqueryreservation.googleapis.com/BiReservation",
+"kind": "analytics",
+"aliases": []
+},
+{
+"type": "bigqueryreservation.googleapis.com/CapacityCommitment",
+"kind": "analytics",
+"aliases": []
+},
+{
+"type": "bigqueryreservation.googleapis.com/Reservation",
+"kind": "analytics",
+"aliases": []
+},
+{
+"type": "bigqueryreservation.googleapis.com/ReservationAssignment",
+"kind": "analytics",
+"aliases": []
+},
+{
+"type": "bigqueryreservation.googleapis.com/ReservationGroup",
+"kind": "analytics",
+"aliases": []
+},
+{
+"type": "bigtableadmin.googleapis.com/AppProfile",
+"kind": "database",
+"aliases": []
+},
+{
+"type": "bigtableadmin.googleapis.com/AuthorizedView",
+"kind": "database",
+"aliases": []
+},
+{
+"type": "bigtableadmin.googleapis.com/Backup",
+"kind": "database",
+"aliases": []
+},
+{
+"type": "bigtableadmin.googleapis.com/Cluster",
+"kind": "database",
+"aliases": []
+},
+{
+"type": "bigtableadmin.googleapis.com/Instance",
+"kind": "database",
+"aliases": []
+},
+{
+"type": "bigtableadmin.googleapis.com/LogicalView",
+"kind": "database",
+"aliases": []
+},
+{
+"type": "bigtableadmin.googleapis.com/MaterializedView",
+"kind": "database",
+"aliases": []
+},
+{
+"type": "bigtableadmin.googleapis.com/SchemaBundle",
+"kind": "database",
+"aliases": []
+},
+{
+"type": "bigtableadmin.googleapis.com/Table",
+"kind": "database",
+"aliases": []
+},
+{
+"type": "binaryauthorization.googleapis.com/Attestor",
+"kind": "security",
+"aliases": []
+},
+{
+"type": "binaryauthorization.googleapis.com/PlatformPolicy",
+"kind": "security",
+"aliases": []
+},
+{
+"type": "binaryauthorization.googleapis.com/Policy",
+"kind": "security",
+"aliases": []
+},
+{
+"type": "blockchainnodeengine.googleapis.com/BlockchainNode",
+"kind": "other",
+"aliases": []
+},
+{
+"type": "certificatemanager.googleapis.com/Certificate",
+"kind": "secret",
+"aliases": []
+},
+{
+"type": "certificatemanager.googleapis.com/CertificateIssuanceConfig",
+"kind": "secret",
+"aliases": []
+},
+{
+"type": "certificatemanager.googleapis.com/CertificateMap",
+"kind": "secret",
+"aliases": []
+},
+{
+"type": "certificatemanager.googleapis.com/CertificateMapEntry",
+"kind": "secret",
+"aliases": []
+},
+{
+"type": "certificatemanager.googleapis.com/DnsAuthorization",
+"kind": "secret",
+"aliases": []
+},
+{
+"type": "certificatemanager.googleapis.com/TrustConfig",
+"kind": "secret",
+"aliases": []
+},
+{
+"type": "cloudaicompanion.googleapis.com/CodeRepositoryIndex",
+"kind": "other",
+"aliases": []
+},
+{
+"type": "cloudaicompanion.googleapis.com/RepositoryGroup",
+"kind": "other",
+"aliases": []
+},
+{
+"type": "cloudasset.googleapis.com/Feed",
+"kind": "other",
+"aliases": []
+},
+{
+"type": "cloudbilling.googleapis.com/BillingAccount",
+"kind": "org",
+"aliases": []
+},
+{
+"type": "cloudbilling.googleapis.com/ProjectBillingInfo",
+"kind": "org",
+"aliases": []
+},
+{
+"type": "cloudbuild.googleapis.com/BitbucketServerConfig",
+"kind": "work",
+"aliases": []
+},
+{
+"type": "cloudbuild.googleapis.com/Build",
+"kind": "work",
+"aliases": []
+},
+{
+"type": "cloudbuild.googleapis.com/BuildTrigger",
+"kind": "work",
+"aliases": []
+},
+{
+"type": "cloudbuild.googleapis.com/Connection",
+"kind": "work",
+"aliases": []
+},
+{
+"type": "cloudbuild.googleapis.com/GithubEnterpriseConfig",
+"kind": "work",
+"aliases": []
+},
+{
+"type": "cloudbuild.googleapis.com/GlobalTriggerSettings",
+"kind": "work",
+"aliases": []
+},
+{
+"type": "cloudbuild.googleapis.com/Repository",
+"kind": "work",
+"aliases": []
+},
+{
+"type": "cloudbuild.googleapis.com/WorkerPool",
+"kind": "work",
+"aliases": []
+},
+{
+"type": "cloudcontrolspartner.googleapis.com/Customer",
+"kind": "other",
+"aliases": []
+},
+{
+"type": "cloudcontrolspartner.googleapis.com/Partner",
+"kind": "other",
+"aliases": []
+},
+{
+"type": "cloudcontrolspartner.googleapis.com/Workload",
+"kind": "other",
+"aliases": []
+},
+{
+"type": "clouddeploy.googleapis.com/Automation",
+"kind": "work",
+"aliases": []
+},
+{
+"type": "clouddeploy.googleapis.com/AutomationRun",
+"kind": "work",
+"aliases": []
+},
+{
+"type": "clouddeploy.googleapis.com/CustomTargetType",
+"kind": "work",
+"aliases": []
+},
+{
+"type": "clouddeploy.googleapis.com/DeliveryPipeline",
+"kind": "work",
+"aliases": []
+},
+{
+"type": "clouddeploy.googleapis.com/DeployPolicy",
+"kind": "work",
+"aliases": []
+},
+{
+"type": "clouddeploy.googleapis.com/JobRun",
+"kind": "work",
+"aliases": []
+},
+{
+"type": "clouddeploy.googleapis.com/Release",
+"kind": "work",
+"aliases": []
+},
+{
+"type": "clouddeploy.googleapis.com/Rollout",
+"kind": "work",
+"aliases": []
+},
+{
+"type": "clouddeploy.googleapis.com/Target",
+"kind": "work",
+"aliases": []
+},
+{
+"type": "cloudfunctions.googleapis.com/CloudFunction",
+"kind": "compute",
+"aliases": []
+},
+{
+"type": "cloudfunctions.googleapis.com/Function",
+"kind": "compute",
+"aliases": []
+},
+{
+"type": "cloudkms.googleapis.com/AutokeyConfig",
+"kind": "secret",
+"aliases": []
+},
+{
+"type": "cloudkms.googleapis.com/CryptoKey",
+"kind": "secret",
+"aliases": []
+},
+{
+"type": "cloudkms.googleapis.com/CryptoKeyVersion",
+"kind": "secret",
+"aliases": []
+},
+{
+"type": "cloudkms.googleapis.com/EkmConfig",
+"kind": "secret",
+"aliases": []
+},
+{
+"type": "cloudkms.googleapis.com/EkmConnection",
+"kind": "secret",
+"aliases": []
+},
+{
+"type": "cloudkms.googleapis.com/ImportJob",
+"kind": "secret",
+"aliases": []
+},
+{
+"type": "cloudkms.googleapis.com/KeyHandle",
+"kind": "secret",
+"aliases": []
+},
+{
+"type": "cloudkms.googleapis.com/KeyRing",
+"kind": "secret",
+"aliases": []
+},
+{
+"type": "cloudkms.googleapis.com/RetiredResource",
+"kind": "secret",
+"aliases": []
+},
+{
+"type": "cloudquotas.googleapis.com/QuotaPreference",
+"kind": "org",
+"aliases": []
+},
+{
+"type": "cloudresourcemanager.googleapis.com/Folder",
+"kind": "org",
+"aliases": []
+},
+{
+"type": "cloudresourcemanager.googleapis.com/Lien",
+"kind": "org",
+"aliases": []
+},
+{
+"type": "cloudresourcemanager.googleapis.com/Organization",
+"kind": "org",
+"aliases": []
+},
+{
+"type": "cloudresourcemanager.googleapis.com/Project",
+"kind": "org",
+"aliases": []
+},
+{
+"type": "cloudresourcemanager.googleapis.com/TagBinding",
+"kind": "org",
+"aliases": []
+},
+{
+"type": "cloudresourcemanager.googleapis.com/TagKey",
+"kind": "org",
+"aliases": []
+},
+{
+"type": "cloudresourcemanager.googleapis.com/TagValue",
+"kind": "org",
+"aliases": []
+},
+{
+"type": "cloudtasks.googleapis.com/Queue",
+"kind": "integration",
+"aliases": []
+},
+{
+"type": "composer.googleapis.com/Environment",
+"kind": "analytics",
+"aliases": []
+},
+{
+"type": "compute.googleapis.com/Address",
+"kind": "network",
+"aliases": []
+},
+{
+"type": "compute.googleapis.com/Autoscaler",
+"kind": "compute",
+"aliases": []
+},
+{
+"type": "compute.googleapis.com/BackendBucket",
+"kind": "compute",
+"aliases": []
+},
+{
+"type": "compute.googleapis.com/BackendService",
+"kind": "network",
+"aliases": []
+},
+{
+"type": "compute.googleapis.com/Commitment",
+"kind": "compute",
+"aliases": []
+},
+{
+"type": "compute.googleapis.com/CrossSiteNetwork",
+"kind": "compute",
+"aliases": []
+},
+{
+"type": "compute.googleapis.com/Disk",
+"kind": "compute",
+"aliases": []
+},
+{
+"type": "compute.googleapis.com/ExternalVpnGateway",
+"kind": "compute",
+"aliases": []
+},
+{
+"type": "compute.googleapis.com/Firewall",
+"kind": "security",
+"aliases": [
+"google_compute_firewall"
+]
+},
+{
+"type": "compute.googleapis.com/FirewallPolicy",
+"kind": "security",
+"aliases": []
+},
+{
+"type": "compute.googleapis.com/ForwardingRule",
+"kind": "network",
+"aliases": []
+},
+{
+"type": "compute.googleapis.com/GlobalAddress",
+"kind": "network",
+"aliases": []
+},
+{
+"type": "compute.googleapis.com/GlobalForwardingRule",
+"kind": "network",
+"aliases": []
+},
+{
+"type": "compute.googleapis.com/HealthCheck",
+"kind": "compute",
+"aliases": []
+},
+{
+"type": "compute.googleapis.com/HttpHealthCheck",
+"kind": "compute",
+"aliases": []
+},
+{
+"type": "compute.googleapis.com/HttpsHealthCheck",
+"kind": "compute",
+"aliases": []
+},
+{
+"type": "compute.googleapis.com/Image",
+"kind": "compute",
+"aliases": []
+},
+{
+"type": "compute.googleapis.com/Instance",
+"kind": "compute",
+"aliases": [
+"google_compute_instance"
+]
+},
+{
+"type": "compute.googleapis.com/InstanceGroup",
+"kind": "compute",
+"aliases": []
+},
+{
+"type": "compute.googleapis.com/InstanceGroupManager",
+"kind": "compute",
+"aliases": []
+},
+{
+"type": "compute.googleapis.com/InstanceSettings",
+"kind": "compute",
+"aliases": []
+},
+{
+"type": "compute.googleapis.com/InstanceTemplate",
+"kind": "compute",
+"aliases": []
+},
+{
+"type": "compute.googleapis.com/InstantSnapshot",
+"kind": "compute",
+"aliases": []
+},
+{
+"type": "compute.googleapis.com/Interconnect",
+"kind": "compute",
+"aliases": []
+},
+{
+"type": "compute.googleapis.com/InterconnectAttachment",
+"kind": "network",
+"aliases": []
+},
+{
+"type": "compute.googleapis.com/License",
+"kind": "compute",
+"aliases": []
+},
+{
+"type": "compute.googleapis.com/MachineImage",
+"kind": "compute",
+"aliases": []
+},
+{
+"type": "compute.googleapis.com/Network",
+"kind": "network",
+"aliases": [
+"google_compute_network"
+]
+},
+{
+"type": "compute.googleapis.com/NetworkAttachment",
+"kind": "network",
+"aliases": []
+},
+{
+"type": "compute.googleapis.com/NetworkEdgeSecurityService",
+"kind": "network",
+"aliases": []
+},
+{
+"type": "compute.googleapis.com/NetworkEndpointGroup",
+"kind": "network",
+"aliases": []
+},
+{
+"type": "compute.googleapis.com/NodeGroup",
+"kind": "compute",
+"aliases": []
+},
+{
+"type": "compute.googleapis.com/NodeTemplate",
+"kind": "compute",
+"aliases": []
+},
+{
+"type": "compute.googleapis.com/PacketMirroring",
+"kind": "compute",
+"aliases": []
+},
+{
+"type": "compute.googleapis.com/Project",
+"kind": "compute",
+"aliases": []
+},
+{
+"type": "compute.googleapis.com/PublicAdvertisedPrefix",
+"kind": "compute",
+"aliases": []
+},
+{
+"type": "compute.googleapis.com/PublicDelegatedPrefix",
+"kind": "compute",
+"aliases": []
+},
+{
+"type": "compute.googleapis.com/RegionDisk",
+"kind": "compute",
+"aliases": []
+},
+{
+"type": "compute.googleapis.com/Reservation",
+"kind": "compute",
+"aliases": []
+},
+{
+"type": "compute.googleapis.com/ResourcePolicy",
+"kind": "compute",
+"aliases": []
+},
+{
+"type": "compute.googleapis.com/Route",
+"kind": "network",
+"aliases": []
+},
+{
+"type": "compute.googleapis.com/Router",
+"kind": "network",
+"aliases": []
+},
+{
+"type": "compute.googleapis.com/SecurityPolicy",
+"kind": "security",
+"aliases": []
+},
+{
+"type": "compute.googleapis.com/ServiceAttachment",
+"kind": "compute",
+"aliases": []
+},
+{
+"type": "compute.googleapis.com/Snapshot",
+"kind": "compute",
+"aliases": []
+},
+{
+"type": "compute.googleapis.com/SslCertificate",
+"kind": "compute",
+"aliases": []
+},
+{
+"type": "compute.googleapis.com/SslPolicy",
+"kind": "compute",
+"aliases": []
+},
+{
+"type": "compute.googleapis.com/StoragePool",
+"kind": "compute",
+"aliases": []
+},
+{
+"type": "compute.googleapis.com/Subnetwork",
+"kind": "network",
+"aliases": [
+"google_compute_subnetwork"
+]
+},
+{
+"type": "compute.googleapis.com/TargetGrpcProxy",
+"kind": "compute",
+"aliases": []
+},
+{
+"type": "compute.googleapis.com/TargetHttpProxy",
+"kind": "network",
+"aliases": []
+},
+{
+"type": "compute.googleapis.com/TargetHttpsProxy",
+"kind": "network",
+"aliases": []
+},
+{
+"type": "compute.googleapis.com/TargetInstance",
+"kind": "compute",
+"aliases": []
+},
+{
+"type": "compute.googleapis.com/TargetPool",
+"kind": "compute",
+"aliases": []
+},
+{
+"type": "compute.googleapis.com/TargetSslProxy",
+"kind": "compute",
+"aliases": []
+},
+{
+"type": "compute.googleapis.com/TargetTcpProxy",
+"kind": "compute",
+"aliases": []
+},
+{
+"type": "compute.googleapis.com/TargetVpnGateway",
+"kind": "compute",
+"aliases": []
+},
+{
+"type": "compute.googleapis.com/UrlMap",
+"kind": "network",
+"aliases": []
+},
+{
+"type": "compute.googleapis.com/VpnGateway",
+"kind": "network",
+"aliases": []
+},
+{
+"type": "compute.googleapis.com/VpnTunnel",
+"kind": "network",
+"aliases": []
+},
+{
+"type": "compute.googleapis.com/WireGroup",
+"kind": "compute",
+"aliases": []
+},
+{
+"type": "config.googleapis.com/Deployment",
+"kind": "other",
+"aliases": []
+},
+{
+"type": "config.googleapis.com/Preview",
+"kind": "other",
+"aliases": []
+},
+{
+"type": "connectors.googleapis.com/Connection",
+"kind": "integration",
+"aliases": []
+},
+{
+"type": "connectors.googleapis.com/EndpointAttachment",
+"kind": "integration",
+"aliases": []
+},
+{
+"type": "connectors.googleapis.com/EventSubscription",
+"kind": "integration",
+"aliases": []
+},
+{
+"type": "connectors.googleapis.com/ManagedZone",
+"kind": "integration",
+"aliases": []
+},
+{
+"type": "connectors.googleapis.com/RegionalSettings",
+"kind": "integration",
+"aliases": []
+},
+{
+"type": "connectors.googleapis.com/Settings",
+"kind": "integration",
+"aliases": []
+},
+{
+"type": "contactcenterinsights.googleapis.com/EncryptionSpec",
+"kind": "other",
+"aliases": []
+},
+{
+"type": "contactcenterinsights.googleapis.com/IssueModel",
+"kind": "other",
+"aliases": []
+},
+{
+"type": "contactcenterinsights.googleapis.com/PhraseMatcher",
+"kind": "other",
+"aliases": []
+},
+{
+"type": "contactcenterinsights.googleapis.com/View",
+"kind": "other",
+"aliases": []
+},
+{
+"type": "container.googleapis.com/Cluster",
+"kind": "container",
+"aliases": [
+"google_container_cluster"
+]
+},
+{
+"type": "container.googleapis.com/NodePool",
+"kind": "container",
+"aliases": []
+},
+{
+"type": "containerregistry.googleapis.com/Image",
+"kind": "other",
+"aliases": []
+},
+{
+"type": "dataflow.googleapis.com/Job",
+"kind": "analytics",
+"aliases": []
+},
+{
+"type": "dataform.googleapis.com/CompilationResult",
+"kind": "analytics",
+"aliases": []
+},
+{
+"type": "dataform.googleapis.com/Folder",
+"kind": "analytics",
+"aliases": []
+},
+{
+"type": "dataform.googleapis.com/ReleaseConfig",
+"kind": "analytics",
+"aliases": []
+},
+{
+"type": "dataform.googleapis.com/Repository",
+"kind": "analytics",
+"aliases": []
+},
+{
+"type": "dataform.googleapis.com/TeamFolder",
+"kind": "analytics",
+"aliases": []
+},
+{
+"type": "dataform.googleapis.com/WorkflowConfig",
+"kind": "analytics",
+"aliases": []
+},
+{
+"type": "dataform.googleapis.com/WorkflowInvocation",
+"kind": "analytics",
+"aliases": []
+},
+{
+"type": "dataform.googleapis.com/Workspace",
+"kind": "analytics",
+"aliases": []
+},
+{
+"type": "datafusion.googleapis.com/DnsPeering",
+"kind": "analytics",
+"aliases": []
+},
+{
+"type": "datafusion.googleapis.com/Instance",
+"kind": "analytics",
+"aliases": []
+},
+{
+"type": "datalineage.googleapis.com/Process",
+"kind": "other",
+"aliases": []
+},
+{
+"type": "datamigration.googleapis.com/ConnectionProfile",
+"kind": "database",
+"aliases": []
+},
+{
+"type": "datamigration.googleapis.com/ConversionWorkspace",
+"kind": "database",
+"aliases": []
+},
+{
+"type": "datamigration.googleapis.com/MigrationJob",
+"kind": "database",
+"aliases": []
+},
+{
+"type": "datamigration.googleapis.com/PrivateConnection",
+"kind": "database",
+"aliases": []
+},
+{
+"type": "dataplex.googleapis.com/Asset",
+"kind": "analytics",
+"aliases": []
+},
+{
+"type": "dataplex.googleapis.com/DataScan",
+"kind": "analytics",
+"aliases": []
+},
+{
+"type": "dataplex.googleapis.com/EncryptionConfig",
+"kind": "analytics",
+"aliases": []
+},
+{
+"type": "dataplex.googleapis.com/Environment",
+"kind": "analytics",
+"aliases": []
+},
+{
+"type": "dataplex.googleapis.com/Glossary",
+"kind": "analytics",
+"aliases": []
+},
+{
+"type": "dataplex.googleapis.com/Lake",
+"kind": "analytics",
+"aliases": []
+},
+{
+"type": "dataplex.googleapis.com/MetadataJob",
+"kind": "analytics",
+"aliases": []
+},
+{
+"type": "dataplex.googleapis.com/Task",
+"kind": "analytics",
+"aliases": []
+},
+{
+"type": "dataplex.googleapis.com/Zone",
+"kind": "analytics",
+"aliases": []
+},
+{
+"type": "dataproc.googleapis.com/AutoscalingPolicy",
+"kind": "analytics",
+"aliases": []
+},
+{
+"type": "dataproc.googleapis.com/Batch",
+"kind": "analytics",
+"aliases": []
+},
+{
+"type": "dataproc.googleapis.com/Cluster",
+"kind": "analytics",
+"aliases": []
+},
+{
+"type": "dataproc.googleapis.com/Job",
+"kind": "analytics",
+"aliases": []
+},
+{
+"type": "dataproc.googleapis.com/Session",
+"kind": "analytics",
+"aliases": []
+},
+{
+"type": "dataproc.googleapis.com/WorkflowTemplate",
+"kind": "analytics",
+"aliases": []
+},
+{
+"type": "datastream.googleapis.com/ConnectionProfile",
+"kind": "database",
+"aliases": []
+},
+{
+"type": "datastream.googleapis.com/PrivateConnection",
+"kind": "database",
+"aliases": []
+},
+{
+"type": "datastream.googleapis.com/Stream",
+"kind": "database",
+"aliases": []
+},
+{
+"type": "developerconnect.googleapis.com/Connection",
+"kind": "work",
+"aliases": []
+},
+{
+"type": "developerconnect.googleapis.com/GitRepositoryLink",
+"kind": "work",
+"aliases": []
+},
+{
+"type": "developerconnect.googleapis.com/InsightsConfig",
+"kind": "work",
+"aliases": []
+},
+{
+"type": "dialogflow.googleapis.com/Agent",
+"kind": "ai",
+"aliases": []
+},
+{
+"type": "dialogflow.googleapis.com/ConversationProfile",
+"kind": "ai",
+"aliases": []
+},
+{
+"type": "dialogflow.googleapis.com/KnowledgeBase",
+"kind": "ai",
+"aliases": []
+},
+{
+"type": "dialogflow.googleapis.com/LocationSettings",
+"kind": "ai",
+"aliases": []
+},
+{
+"type": "discoveryengine.googleapis.com/Assistant",
+"kind": "ai",
+"aliases": []
+},
+{
+"type": "discoveryengine.googleapis.com/Collection",
+"kind": "ai",
+"aliases": []
+},
+{
+"type": "discoveryengine.googleapis.com/DataStore",
+"kind": "ai",
+"aliases": []
+},
+{
+"type": "discoveryengine.googleapis.com/Engine",
+"kind": "ai",
+"aliases": []
+},
+{
+"type": "discoveryengine.googleapis.com/Notebook",
+"kind": "ai",
+"aliases": []
+},
+{
+"type": "dlp.googleapis.com/DeidentifyTemplate",
+"kind": "security",
+"aliases": []
+},
+{
+"type": "dlp.googleapis.com/DiscoveryConfig",
+"kind": "security",
+"aliases": []
+},
+{
+"type": "dlp.googleapis.com/DlpJob",
+"kind": "security",
+"aliases": []
+},
+{
+"type": "dlp.googleapis.com/InspectTemplate",
+"kind": "security",
+"aliases": []
+},
+{
+"type": "dlp.googleapis.com/JobTrigger",
+"kind": "security",
+"aliases": []
+},
+{
+"type": "dlp.googleapis.com/StoredInfoType",
+"kind": "security",
+"aliases": []
+},
+{
+"type": "dns.googleapis.com/ManagedZone",
+"kind": "dns",
+"aliases": [
+"google_dns_managed_zone"
+]
+},
+{
+"type": "dns.googleapis.com/Policy",
+"kind": "dns",
+"aliases": []
+},
+{
+"type": "dns.googleapis.com/ResourceRecordSet",
+"kind": "dns",
+"aliases": []
+},
+{
+"type": "dns.googleapis.com/ResponsePolicy",
+"kind": "dns",
+"aliases": []
+},
+{
+"type": "dns.googleapis.com/ResponsePolicyRule",
+"kind": "dns",
+"aliases": []
+},
+{
+"type": "documentai.googleapis.com/HumanReviewConfig",
+"kind": "ai",
+"aliases": []
+},
+{
+"type": "documentai.googleapis.com/LabelerPool",
+"kind": "ai",
+"aliases": []
+},
+{
+"type": "documentai.googleapis.com/Processor",
+"kind": "ai",
+"aliases": []
+},
+{
+"type": "documentai.googleapis.com/ProcessorVersion",
+"kind": "ai",
+"aliases": []
+},
+{
+"type": "domains.googleapis.com/Registration",
+"kind": "other",
+"aliases": []
+},
+{
+"type": "essentialcontacts.googleapis.com/Contact",
+"kind": "org",
+"aliases": []
+},
+{
+"type": "eventarc.googleapis.com/Channel",
+"kind": "messaging",
+"aliases": []
+},
+{
+"type": "eventarc.googleapis.com/ChannelConnection",
+"kind": "messaging",
+"aliases": []
+},
+{
+"type": "eventarc.googleapis.com/Enrollment",
+"kind": "messaging",
+"aliases": []
+},
+{
+"type": "eventarc.googleapis.com/GoogleApiSource",
+"kind": "messaging",
+"aliases": []
+},
+{
+"type": "eventarc.googleapis.com/GoogleChannelConfig",
+"kind": "messaging",
+"aliases": []
+},
+{
+"type": "eventarc.googleapis.com/MessageBus",
+"kind": "messaging",
+"aliases": []
+},
+{
+"type": "eventarc.googleapis.com/Pipeline",
+"kind": "messaging",
+"aliases": []
+},
+{
+"type": "eventarc.googleapis.com/Trigger",
+"kind": "messaging",
+"aliases": []
+},
+{
+"type": "file.googleapis.com/Backup",
+"kind": "storage",
+"aliases": []
+},
+{
+"type": "file.googleapis.com/Instance",
+"kind": "storage",
+"aliases": []
+},
+{
+"type": "file.googleapis.com/Snapshot",
+"kind": "storage",
+"aliases": []
+},
+{
+"type": "financialservices.googleapis.com/BacktestResult",
+"kind": "other",
+"aliases": []
+},
+{
+"type": "financialservices.googleapis.com/Dataset",
+"kind": "other",
+"aliases": []
+},
+{
+"type": "financialservices.googleapis.com/EngineConfig",
+"kind": "other",
+"aliases": []
+},
+{
+"type": "financialservices.googleapis.com/Instance",
+"kind": "other",
+"aliases": []
+},
+{
+"type": "financialservices.googleapis.com/Model",
+"kind": "other",
+"aliases": []
+},
+{
+"type": "financialservices.googleapis.com/PredictionResult",
+"kind": "other",
+"aliases": []
+},
+{
+"type": "firebase.googleapis.com/FirebaseAppInfo",
+"kind": "other",
+"aliases": []
+},
+{
+"type": "firebase.googleapis.com/FirebaseProject",
+"kind": "other",
+"aliases": []
+},
+{
+"type": "firebasedataconnect.googleapis.com/Connector",
+"kind": "other",
+"aliases": []
+},
+{
+"type": "firebasedataconnect.googleapis.com/Schema",
+"kind": "other",
+"aliases": []
+},
+{
+"type": "firebasedataconnect.googleapis.com/Service",
+"kind": "other",
+"aliases": []
+},
+{
+"type": "firebaserules.googleapis.com/Release",
+"kind": "other",
+"aliases": []
+},
+{
+"type": "firebaserules.googleapis.com/Ruleset",
+"kind": "other",
+"aliases": []
+},
+{
+"type": "firestore.googleapis.com/Backup",
+"kind": "database",
+"aliases": []
+},
+{
+"type": "firestore.googleapis.com/Database",
+"kind": "database",
+"aliases": []
+},
+{
+"type": "gkebackup.googleapis.com/Backup",
+"kind": "storage",
+"aliases": []
+},
+{
+"type": "gkebackup.googleapis.com/BackupPlan",
+"kind": "storage",
+"aliases": []
+},
+{
+"type": "gkebackup.googleapis.com/Restore",
+"kind": "storage",
+"aliases": []
+},
+{
+"type": "gkebackup.googleapis.com/RestorePlan",
+"kind": "storage",
+"aliases": []
+},
+{
+"type": "gkebackup.googleapis.com/VolumeBackup",
+"kind": "storage",
+"aliases": []
+},
+{
+"type": "gkebackup.googleapis.com/VolumeRestore",
+"kind": "storage",
+"aliases": []
+},
+{
+"type": "gkehub.googleapis.com/Feature",
+"kind": "container",
+"aliases": []
+},
+{
+"type": "gkehub.googleapis.com/Fleet",
+"kind": "container",
+"aliases": []
+},
+{
+"type": "gkehub.googleapis.com/Membership",
+"kind": "container",
+"aliases": []
+},
+{
+"type": "gkehub.googleapis.com/MembershipBinding",
+"kind": "container",
+"aliases": []
+},
+{
+"type": "gkehub.googleapis.com/MembershipFeature",
+"kind": "container",
+"aliases": []
+},
+{
+"type": "gkehub.googleapis.com/Namespace",
+"kind": "container",
+"aliases": []
+},
+{
+"type": "gkehub.googleapis.com/RBACRoleBinding",
+"kind": "container",
+"aliases": []
+},
+{
+"type": "gkehub.googleapis.com/Scope",
+"kind": "container",
+"aliases": []
+},
+{
+"type": "gkemulticloud.googleapis.com/AttachedCluster",
+"kind": "container",
+"aliases": []
+},
+{
+"type": "gkemulticloud.googleapis.com/AwsCluster",
+"kind": "container",
+"aliases": []
+},
+{
+"type": "gkemulticloud.googleapis.com/AwsNodePool",
+"kind": "container",
+"aliases": []
+},
+{
+"type": "gkemulticloud.googleapis.com/AzureClient",
+"kind": "container",
+"aliases": []
+},
+{
+"type": "gkemulticloud.googleapis.com/AzureCluster",
+"kind": "container",
+"aliases": []
+},
+{
+"type": "gkemulticloud.googleapis.com/AzureNodePool",
+"kind": "container",
+"aliases": []
+},
+{
+"type": "gkeonprem.googleapis.com/BareMetalAdminCluster",
+"kind": "container",
+"aliases": []
+},
+{
+"type": "gkeonprem.googleapis.com/BareMetalCluster",
+"kind": "container",
+"aliases": []
+},
+{
+"type": "gkeonprem.googleapis.com/BareMetalNodePool",
+"kind": "container",
+"aliases": []
+},
+{
+"type": "gkeonprem.googleapis.com/VmwareAdminCluster",
+"kind": "container",
+"aliases": []
+},
+{
+"type": "gkeonprem.googleapis.com/VmwareCluster",
+"kind": "container",
+"aliases": []
+},
+{
+"type": "gkeonprem.googleapis.com/VmwareNodePool",
+"kind": "container",
+"aliases": []
+},
+{
+"type": "healthcare.googleapis.com/ConsentStore",
+"kind": "other",
+"aliases": []
+},
+{
+"type": "healthcare.googleapis.com/Dataset",
+"kind": "other",
+"aliases": []
+},
+{
+"type": "healthcare.googleapis.com/DicomStore",
+"kind": "other",
+"aliases": []
+},
+{
+"type": "healthcare.googleapis.com/FhirStore",
+"kind": "other",
+"aliases": []
+},
+{
+"type": "healthcare.googleapis.com/Hl7V2Store",
+"kind": "other",
+"aliases": []
+},
+{
+"type": "hypercomputecluster.googleapis.com/Cluster",
+"kind": "other",
+"aliases": []
+},
+{
+"type": "iam.googleapis.com/OauthClient",
+"kind": "identity",
+"aliases": []
+},
+{
+"type": "iam.googleapis.com/OauthClientCredential",
+"kind": "identity",
+"aliases": []
+},
+{
+"type": "iam.googleapis.com/PolicyBinding",
+"kind": "identity",
+"aliases": []
+},
+{
+"type": "iam.googleapis.com/PolicyV2",
+"kind": "identity",
+"aliases": []
+},
+{
+"type": "iam.googleapis.com/PrincipalAccessBoundaryPolicy",
+"kind": "identity",
+"aliases": []
+},
+{
+"type": "iam.googleapis.com/Role",
+"kind": "identity",
+"aliases": []
+},
+{
+"type": "iam.googleapis.com/ServiceAccount",
+"kind": "identity",
+"aliases": [
+"google_service_account"
+]
+},
+{
+"type": "iam.googleapis.com/ServiceAccountKey",
+"kind": "identity",
+"aliases": []
+},
+{
+"type": "iam.googleapis.com/WorkforcePool",
+"kind": "identity",
+"aliases": []
+},
+{
+"type": "iam.googleapis.com/WorkforcePoolProvider",
+"kind": "identity",
+"aliases": []
+},
+{
+"type": "iam.googleapis.com/WorkforcePoolProviderKey",
+"kind": "identity",
+"aliases": []
+},
+{
+"type": "iam.googleapis.com/WorkloadIdentityPool",
+"kind": "identity",
+"aliases": []
+},
+{
+"type": "iam.googleapis.com/WorkloadIdentityPoolManagedIdentity",
+"kind": "identity",
+"aliases": []
+},
+{
+"type": "iam.googleapis.com/WorkloadIdentityPoolNamespace",
+"kind": "identity",
+"aliases": []
+},
+{
+"type": "iam.googleapis.com/WorkloadIdentityPoolProvider",
+"kind": "identity",
+"aliases": []
+},
+{
+"type": "iam.googleapis.com/WorkloadIdentityPoolProviderKey",
+"kind": "identity",
+"aliases": []
+},
+{
+"type": "iap.googleapis.com/TunnelDestGroup",
+"kind": "security",
+"aliases": []
+},
+{
+"type": "identitytoolkit.googleapis.com/Config",
+"kind": "identity",
+"aliases": []
+},
+{
+"type": "identitytoolkit.googleapis.com/DefaultSupportedIdpConfig",
+"kind": "identity",
+"aliases": []
+},
+{
+"type": "identitytoolkit.googleapis.com/InboundSamlConfig",
+"kind": "identity",
+"aliases": []
+},
+{
+"type": "identitytoolkit.googleapis.com/OauthIdpConfig",
+"kind": "identity",
+"aliases": []
+},
+{
+"type": "identitytoolkit.googleapis.com/Tenant",
+"kind": "identity",
+"aliases": []
+},
+{
+"type": "ids.googleapis.com/Endpoint",
+"kind": "security",
+"aliases": []
+},
+{
+"type": "integrations.googleapis.com/AuthConfig",
+"kind": "integration",
+"aliases": []
+},
+{
+"type": "integrations.googleapis.com/Certificate",
+"kind": "integration",
+"aliases": []
+},
+{
+"type": "integrations.googleapis.com/Execution",
+"kind": "integration",
+"aliases": []
+},
+{
+"type": "integrations.googleapis.com/Integration",
+"kind": "integration",
+"aliases": []
+},
+{
+"type": "integrations.googleapis.com/IntegrationVersion",
+"kind": "integration",
+"aliases": []
+},
+{
+"type": "integrations.googleapis.com/SfdcChannel",
+"kind": "integration",
+"aliases": []
+},
+{
+"type": "integrations.googleapis.com/SfdcInstance",
+"kind": "integration",
+"aliases": []
+},
+{
+"type": "integrations.googleapis.com/Suspension",
+"kind": "integration",
+"aliases": []
+},
+{
+"type": "krmapihosting.googleapis.com/KrmApiHost",
+"kind": "container",
+"aliases": []
+},
+{
+"type": "livestream.googleapis.com/Asset",
+"kind": "other",
+"aliases": []
+},
+{
+"type": "livestream.googleapis.com/Channel",
+"kind": "other",
+"aliases": []
+},
+{
+"type": "livestream.googleapis.com/Input",
+"kind": "other",
+"aliases": []
+},
+{
+"type": "livestream.googleapis.com/Pool",
+"kind": "other",
+"aliases": []
+},
+{
+"type": "logging.googleapis.com/Link",
+"kind": "observability",
+"aliases": []
+},
+{
+"type": "logging.googleapis.com/LogBucket",
+"kind": "observability",
+"aliases": []
+},
+{
+"type": "logging.googleapis.com/LogMetric",
+"kind": "observability",
+"aliases": []
+},
+{
+"type": "logging.googleapis.com/LogSink",
+"kind": "observability",
+"aliases": []
+},
+{
+"type": "logging.googleapis.com/LogView",
+"kind": "observability",
+"aliases": []
+},
+{
+"type": "logging.googleapis.com/RecentQuery",
+"kind": "observability",
+"aliases": []
+},
+{
+"type": "logging.googleapis.com/SavedQuery",
+"kind": "observability",
+"aliases": []
+},
+{
+"type": "logging.googleapis.com/Settings",
+"kind": "observability",
+"aliases": []
+},
+{
+"type": "looker.googleapis.com/Backup",
+"kind": "analytics",
+"aliases": []
+},
+{
+"type": "looker.googleapis.com/Instance",
+"kind": "analytics",
+"aliases": []
+},
+{
+"type": "lustre.googleapis.com/Instance",
+"kind": "storage",
+"aliases": []
+},
+{
+"type": "managedidentities.googleapis.com/Domain",
+"kind": "identity",
+"aliases": []
+},
+{
+"type": "managedkafka.googleapis.com/Cluster",
+"kind": "messaging",
+"aliases": []
+},
+{
+"type": "managedkafka.googleapis.com/ConnectCluster",
+"kind": "messaging",
+"aliases": []
+},
+{
+"type": "memcache.googleapis.com/Instance",
+"kind": "database",
+"aliases": []
+},
+{
+"type": "memorystore.googleapis.com/Instance",
+"kind": "database",
+"aliases": []
+},
+{
+"type": "metastore.googleapis.com/Backup",
+"kind": "analytics",
+"aliases": []
+},
+{
+"type": "metastore.googleapis.com/Federation",
+"kind": "analytics",
+"aliases": []
+},
+{
+"type": "metastore.googleapis.com/MetadataImport",
+"kind": "analytics",
+"aliases": []
+},
+{
+"type": "metastore.googleapis.com/Service",
+"kind": "analytics",
+"aliases": []
+},
+{
+"type": "migrationcenter.googleapis.com/Asset",
+"kind": "other",
+"aliases": []
+},
+{
+"type": "migrationcenter.googleapis.com/CostAssessmentJob",
+"kind": "other",
+"aliases": []
+},
+{
+"type": "monitoring.googleapis.com/AlertPolicy",
+"kind": "observability",
+"aliases": []
+},
+{
+"type": "monitoring.googleapis.com/Dashboard",
+"kind": "observability",
+"aliases": []
+},
+{
+"type": "monitoring.googleapis.com/NotificationChannel",
+"kind": "observability",
+"aliases": []
+},
+{
+"type": "monitoring.googleapis.com/Snooze",
+"kind": "observability",
+"aliases": []
+},
+{
+"type": "monitoring.googleapis.com/UptimeCheckConfig",
+"kind": "observability",
+"aliases": []
+},
+{
+"type": "netapp.googleapis.com/ActiveDirectory",
+"kind": "storage",
+"aliases": []
+},
+{
+"type": "netapp.googleapis.com/Backup",
+"kind": "storage",
+"aliases": []
+},
+{
+"type": "netapp.googleapis.com/BackupPolicy",
+"kind": "storage",
+"aliases": []
+},
+{
+"type": "netapp.googleapis.com/BackupVault",
+"kind": "storage",
+"aliases": []
+},
+{
+"type": "netapp.googleapis.com/KmsConfig",
+"kind": "storage",
+"aliases": []
+},
+{
+"type": "netapp.googleapis.com/Replication",
+"kind": "storage",
+"aliases": []
+},
+{
+"type": "netapp.googleapis.com/Snapshot",
+"kind": "storage",
+"aliases": []
+},
+{
+"type": "netapp.googleapis.com/StoragePool",
+"kind": "storage",
+"aliases": []
+},
+{
+"type": "netapp.googleapis.com/Volume",
+"kind": "storage",
+"aliases": []
+},
+{
+"type": "networkconnectivity.googleapis.com/Group",
+"kind": "network",
+"aliases": []
+},
+{
+"type": "networkconnectivity.googleapis.com/Hub",
+"kind": "network",
+"aliases": []
+},
+{
+"type": "networkconnectivity.googleapis.com/HubRoute",
+"kind": "network",
+"aliases": []
+},
+{
+"type": "networkconnectivity.googleapis.com/InternalRange",
+"kind": "network",
+"aliases": []
+},
+{
+"type": "networkconnectivity.googleapis.com/PolicyBasedRoutes",
+"kind": "network",
+"aliases": []
+},
+{
+"type": "networkconnectivity.googleapis.com/RegionalEndpoint",
+"kind": "network",
+"aliases": []
+},
+{
+"type": "networkconnectivity.googleapis.com/RouteTable",
+"kind": "network",
+"aliases": []
+},
+{
+"type": "networkconnectivity.googleapis.com/Spoke",
+"kind": "network",
+"aliases": []
+},
+{
+"type": "networkmanagement.googleapis.com/ConnectivityTest",
+"kind": "network",
+"aliases": []
+},
+{
+"type": "networkmanagement.googleapis.com/VpcFlowLogsConfig",
+"kind": "network",
+"aliases": []
+},
+{
+"type": "networksecurity.googleapis.com/AddressGroup",
+"kind": "security",
+"aliases": []
+},
+{
+"type": "networksecurity.googleapis.com/AuthorizationPolicy",
+"kind": "security",
+"aliases": []
+},
+{
+"type": "networksecurity.googleapis.com/AuthzPolicy",
+"kind": "security",
+"aliases": []
+},
+{
+"type": "networksecurity.googleapis.com/ClientTlsPolicy",
+"kind": "security",
+"aliases": []
+},
+{
+"type": "networksecurity.googleapis.com/DnsThreatDetector",
+"kind": "security",
+"aliases": []
+},
+{
+"type": "networksecurity.googleapis.com/FirewallEndpoint",
+"kind": "security",
+"aliases": []
+},
+{
+"type": "networksecurity.googleapis.com/FirewallEndpointAssociation",
+"kind": "security",
+"aliases": []
+},
+{
+"type": "networksecurity.googleapis.com/GatewaySecurityPolicy",
+"kind": "security",
+"aliases": []
+},
+{
+"type": "networksecurity.googleapis.com/GatewaySecurityPolicyRule",
+"kind": "security",
+"aliases": []
+},
+{
+"type": "networksecurity.googleapis.com/InterceptDeployment",
+"kind": "security",
+"aliases": []
+},
+{
+"type": "networksecurity.googleapis.com/InterceptDeploymentGroup",
+"kind": "security",
+"aliases": []
+},
+{
+"type": "networksecurity.googleapis.com/InterceptEndpointGroup",
+"kind": "security",
+"aliases": []
+},
+{
+"type": "networksecurity.googleapis.com/InterceptEndpointGroupAssociation",
+"kind": "security",
+"aliases": []
+},
+{
+"type": "networksecurity.googleapis.com/MirroringDeployment",
+"kind": "security",
+"aliases": []
+},
+{
+"type": "networksecurity.googleapis.com/MirroringDeploymentGroup",
+"kind": "security",
+"aliases": []
+},
+{
+"type": "networksecurity.googleapis.com/MirroringEndpointGroup",
+"kind": "security",
+"aliases": []
+},
+{
+"type": "networksecurity.googleapis.com/MirroringEndpointGroupAssociation",
+"kind": "security",
+"aliases": []
+},
+{
+"type": "networksecurity.googleapis.com/SecurityProfile",
+"kind": "security",
+"aliases": []
+},
+{
+"type": "networksecurity.googleapis.com/SecurityProfileGroup",
+"kind": "security",
+"aliases": []
+},
+{
+"type": "networksecurity.googleapis.com/ServerTlsPolicy",
+"kind": "security",
+"aliases": []
+},
+{
+"type": "networksecurity.googleapis.com/TlsInspectionPolicy",
+"kind": "security",
+"aliases": []
+},
+{
+"type": "networksecurity.googleapis.com/UrlList",
+"kind": "security",
+"aliases": []
+},
+{
+"type": "networkservices.googleapis.com/AuthzExtensions",
+"kind": "network",
+"aliases": []
+},
+{
+"type": "networkservices.googleapis.com/EdgeCacheKeyset",
+"kind": "network",
+"aliases": []
+},
+{
+"type": "networkservices.googleapis.com/EdgeCacheOrigin",
+"kind": "network",
+"aliases": []
+},
+{
+"type": "networkservices.googleapis.com/EdgeCacheService",
+"kind": "network",
+"aliases": []
+},
+{
+"type": "networkservices.googleapis.com/EndpointPolicy",
+"kind": "network",
+"aliases": []
+},
+{
+"type": "networkservices.googleapis.com/Gateway",
+"kind": "network",
+"aliases": []
+},
+{
+"type": "networkservices.googleapis.com/GrpcRoute",
+"kind": "network",
+"aliases": []
+},
+{
+"type": "networkservices.googleapis.com/HttpRoute",
+"kind": "network",
+"aliases": []
+},
+{
+"type": "networkservices.googleapis.com/LbRouteExtension",
+"kind": "network",
+"aliases": []
+},
+{
+"type": "networkservices.googleapis.com/LbTrafficExtension",
+"kind": "network",
+"aliases": []
+},
+{
+"type": "networkservices.googleapis.com/Mesh",
+"kind": "network",
+"aliases": []
+},
+{
+"type": "networkservices.googleapis.com/ServiceBinding",
+"kind": "network",
+"aliases": []
+},
+{
+"type": "networkservices.googleapis.com/ServiceLbPolicy",
+"kind": "network",
+"aliases": []
+},
+{
+"type": "networkservices.googleapis.com/TcpRoute",
+"kind": "network",
+"aliases": []
+},
+{
+"type": "networkservices.googleapis.com/TlsRoute",
+"kind": "network",
+"aliases": []
+},
+{
+"type": "networkservices.googleapis.com/WasmPlugin",
+"kind": "network",
+"aliases": []
+},
+{
+"type": "networkservices.googleapis.com/WasmPluginVersion",
+"kind": "network",
+"aliases": []
+},
+{
+"type": "notebooks.googleapis.com/Instance",
+"kind": "ai",
+"aliases": []
+},
+{
+"type": "oracledatabase.googleapis.com/AutonomousDatabase",
+"kind": "database",
+"aliases": []
+},
+{
+"type": "oracledatabase.googleapis.com/CloudExadataInfrastructure",
+"kind": "database",
+"aliases": []
+},
+{
+"type": "oracledatabase.googleapis.com/CloudVmCluster",
+"kind": "database",
+"aliases": []
+},
+{
+"type": "orgpolicy.googleapis.com/CustomConstraint",
+"kind": "org",
+"aliases": []
+},
+{
+"type": "orgpolicy.googleapis.com/Policy",
+"kind": "org",
+"aliases": []
+},
+{
+"type": "osconfig.googleapis.com/OSPolicyAssignment",
+"kind": "compute",
+"aliases": []
+},
+{
+"type": "osconfig.googleapis.com/OSPolicyAssignmentReport",
+"kind": "compute",
+"aliases": []
+},
+{
+"type": "osconfig.googleapis.com/PatchDeployment",
+"kind": "compute",
+"aliases": []
+},
+{
+"type": "osconfig.googleapis.com/VulnerabilityReport",
+"kind": "compute",
+"aliases": []
+},
+{
+"type": "parallelstore.googleapis.com/Instance",
+"kind": "storage",
+"aliases": []
+},
+{
+"type": "parametermanager.googleapis.com/Parameter",
+"kind": "other",
+"aliases": []
+},
+{
+"type": "parametermanager.googleapis.com/ParameterVersion",
+"kind": "other",
+"aliases": []
+},
+{
+"type": "privateca.googleapis.com/CaPool",
+"kind": "secret",
+"aliases": []
+},
+{
+"type": "privateca.googleapis.com/Certificate",
+"kind": "secret",
+"aliases": []
+},
+{
+"type": "privateca.googleapis.com/CertificateAuthority",
+"kind": "secret",
+"aliases": []
+},
+{
+"type": "privateca.googleapis.com/CertificateRevocationList",
+"kind": "secret",
+"aliases": []
+},
+{
+"type": "privateca.googleapis.com/CertificateTemplate",
+"kind": "secret",
+"aliases": []
+},
+{
+"type": "privilegedaccessmanager.googleapis.com/Grant",
+"kind": "org",
+"aliases": []
+},
+{
+"type": "pubsub.googleapis.com/Schema",
+"kind": "messaging",
+"aliases": []
+},
+{
+"type": "pubsub.googleapis.com/Snapshot",
+"kind": "messaging",
+"aliases": []
+},
+{
+"type": "pubsub.googleapis.com/Subscription",
+"kind": "messaging",
+"aliases": []
+},
+{
+"type": "pubsub.googleapis.com/Topic",
+"kind": "messaging",
+"aliases": []
+},
+{
+"type": "recaptchaenterprise.googleapis.com/FirewallPolicy",
+"kind": "security",
+"aliases": []
+},
+{
+"type": "recaptchaenterprise.googleapis.com/Key",
+"kind": "security",
+"aliases": []
+},
+{
+"type": "redis.googleapis.com/Cluster",
+"kind": "database",
+"aliases": []
+},
+{
+"type": "redis.googleapis.com/Instance",
+"kind": "database",
+"aliases": []
+},
+{
+"type": "retail.googleapis.com/Catalog",
+"kind": "other",
+"aliases": []
+},
+{
+"type": "run.googleapis.com/DomainMapping",
+"kind": "container",
+"aliases": []
+},
+{
+"type": "run.googleapis.com/Execution",
+"kind": "container",
+"aliases": []
+},
+{
+"type": "run.googleapis.com/Job",
+"kind": "container",
+"aliases": []
+},
+{
+"type": "run.googleapis.com/Revision",
+"kind": "container",
+"aliases": []
+},
+{
+"type": "run.googleapis.com/Service",
+"kind": "container",
+"aliases": []
+},
+{
+"type": "run.googleapis.com/WorkerPool",
+"kind": "container",
+"aliases": []
+},
+{
+"type": "saasservicemgmt.googleapis.com/Release",
+"kind": "other",
+"aliases": []
+},
+{
+"type": "saasservicemgmt.googleapis.com/Rollout",
+"kind": "other",
+"aliases": []
+},
+{
+"type": "saasservicemgmt.googleapis.com/RolloutKind",
+"kind": "other",
+"aliases": []
+},
+{
+"type": "saasservicemgmt.googleapis.com/Saas",
+"kind": "other",
+"aliases": []
+},
+{
+"type": "saasservicemgmt.googleapis.com/Tenant",
+"kind": "other",
+"aliases": []
+},
+{
+"type": "saasservicemgmt.googleapis.com/Unit",
+"kind": "other",
+"aliases": []
+},
+{
+"type": "saasservicemgmt.googleapis.com/UnitKind",
+"kind": "other",
+"aliases": []
+},
+{
+"type": "secretmanager.googleapis.com/Secret",
+"kind": "secret",
+"aliases": []
+},
+{
+"type": "secretmanager.googleapis.com/SecretVersion",
+"kind": "secret",
+"aliases": []
+},
+{
+"type": "securesourcemanager.googleapis.com/Instance",
+"kind": "work",
+"aliases": []
+},
+{
+"type": "securitycenter.googleapis.com/BigQueryExport",
+"kind": "security",
+"aliases": []
+},
+{
+"type": "securitycenter.googleapis.com/ContainerThreatDetectionSettings",
+"kind": "security",
+"aliases": []
+},
+{
+"type": "securitycenter.googleapis.com/EventThreatDetectionSettings",
+"kind": "security",
+"aliases": []
+},
+{
+"type": "securitycenter.googleapis.com/MuteConfig",
+"kind": "security",
+"aliases": []
+},
+{
+"type": "securitycenter.googleapis.com/NotificationConfig",
+"kind": "security",
+"aliases": []
+},
+{
+"type": "securitycenter.googleapis.com/ResourceValueConfig",
+"kind": "security",
+"aliases": []
+},
+{
+"type": "securitycenter.googleapis.com/SecurityHealthAnalyticsSettings",
+"kind": "security",
+"aliases": []
+},
+{
+"type": "securitycenter.googleapis.com/VirtualMachineThreatDetectionSettings",
+"kind": "security",
+"aliases": []
+},
+{
+"type": "securitycenter.googleapis.com/WebSecurityScannerSettings",
+"kind": "security",
+"aliases": []
+},
+{
+"type": "securitycentermanagement.googleapis.com/EventThreatDetectionCustomModule",
+"kind": "security",
+"aliases": []
+},
+{
+"type": "securitycentermanagement.googleapis.com/SecurityCenterService",
+"kind": "security",
+"aliases": []
+},
+{
+"type": "securitycentermanagement.googleapis.com/SecurityHealthAnalyticsCustomModule",
+"kind": "security",
+"aliases": []
+},
+{
+"type": "securityposture.googleapis.com/Posture",
+"kind": "other",
+"aliases": []
+},
+{
+"type": "securityposture.googleapis.com/PostureDeployment",
+"kind": "other",
+"aliases": []
+},
+{
+"type": "servicedirectory.googleapis.com/Endpoint",
+"kind": "network",
+"aliases": []
+},
+{
+"type": "servicedirectory.googleapis.com/Namespace",
+"kind": "network",
+"aliases": []
+},
+{
+"type": "servicedirectory.googleapis.com/Service",
+"kind": "network",
+"aliases": []
+},
+{
+"type": "servicemanagement.googleapis.com/ManagedService",
+"kind": "org",
+"aliases": []
+},
+{
+"type": "servicemanagement.googleapis.com/Service",
+"kind": "org",
+"aliases": []
+},
+{
+"type": "servicenetworking.googleapis.com/Connection",
+"kind": "network",
+"aliases": []
+},
+{
+"type": "serviceusage.googleapis.com/Service",
+"kind": "org",
+"aliases": []
+},
+{
+"type": "spanner.googleapis.com/Backup",
+"kind": "database",
+"aliases": []
+},
+{
+"type": "spanner.googleapis.com/Database",
+"kind": "database",
+"aliases": []
+},
+{
+"type": "spanner.googleapis.com/Instance",
+"kind": "database",
+"aliases": []
+},
+{
+"type": "spanner.googleapis.com/InstanceConfig",
+"kind": "database",
+"aliases": []
+},
+{
+"type": "spanner.googleapis.com/InstancePartition",
+"kind": "database",
+"aliases": []
+},
+{
+"type": "speakerid.googleapis.com/Phrase",
+"kind": "other",
+"aliases": []
+},
+{
+"type": "speakerid.googleapis.com/Settings",
+"kind": "other",
+"aliases": []
+},
+{
+"type": "speakerid.googleapis.com/Speaker",
+"kind": "other",
+"aliases": []
+},
+{
+"type": "speech.googleapis.com/Config",
+"kind": "other",
+"aliases": []
+},
+{
+"type": "speech.googleapis.com/CustomClass",
+"kind": "other",
+"aliases": []
+},
+{
+"type": "speech.googleapis.com/Endpoint",
+"kind": "other",
+"aliases": []
+},
+{
+"type": "speech.googleapis.com/Model",
+"kind": "other",
+"aliases": []
+},
+{
+"type": "speech.googleapis.com/PhraseSet",
+"kind": "other",
+"aliases": []
+},
+{
+"type": "speech.googleapis.com/Recognizer",
+"kind": "other",
+"aliases": []
+},
+{
+"type": "sqladmin.googleapis.com/Backup",
+"kind": "database",
+"aliases": []
+},
+{
+"type": "sqladmin.googleapis.com/BackupRun",
+"kind": "database",
+"aliases": []
+},
+{
+"type": "sqladmin.googleapis.com/Instance",
+"kind": "database",
+"aliases": [
+"google_sql_database_instance"
+]
+},
+{
+"type": "storage.googleapis.com/Bucket",
+"kind": "storage",
+"aliases": [
+"google_storage_bucket"
+]
+},
+{
+"type": "storagebatchoperations.googleapis.com/Job",
+"kind": "storage",
+"aliases": []
+},
+{
+"type": "storageinsights.googleapis.com/ReportConfig",
+"kind": "storage",
+"aliases": []
+},
+{
+"type": "storageinsights.googleapis.com/ReportDetail",
+"kind": "storage",
+"aliases": []
+},
+{
+"type": "storagetransfer.googleapis.com/TransferJob",
+"kind": "storage",
+"aliases": []
+},
+{
+"type": "tpu.googleapis.com/Node",
+"kind": "compute",
+"aliases": []
+},
+{
+"type": "tpu.googleapis.com/QueuedResource",
+"kind": "compute",
+"aliases": []
+},
+{
+"type": "transcoder.googleapis.com/Job",
+"kind": "other",
+"aliases": []
+},
+{
+"type": "transcoder.googleapis.com/JobTemplate",
+"kind": "other",
+"aliases": []
+},
+{
+"type": "videostitcher.googleapis.com/CdnKey",
+"kind": "other",
+"aliases": []
+},
+{
+"type": "videostitcher.googleapis.com/LiveConfig",
+"kind": "other",
+"aliases": []
+},
+{
+"type": "videostitcher.googleapis.com/Slate",
+"kind": "other",
+"aliases": []
+},
+{
+"type": "videostitcher.googleapis.com/VodConfig",
+"kind": "other",
+"aliases": []
+},
+{
+"type": "vmmigration.googleapis.com/CloneJob",
+"kind": "host",
+"aliases": []
+},
+{
+"type": "vmmigration.googleapis.com/CutoverJob",
+"kind": "host",
+"aliases": []
+},
+{
+"type": "vmmigration.googleapis.com/DatacenterConnector",
+"kind": "host",
+"aliases": []
+},
+{
+"type": "vmmigration.googleapis.com/Group",
+"kind": "host",
+"aliases": []
+},
+{
+"type": "vmmigration.googleapis.com/ImageImport",
+"kind": "host",
+"aliases": []
+},
+{
+"type": "vmmigration.googleapis.com/MigratingVm",
+"kind": "host",
+"aliases": []
+},
+{
+"type": "vmmigration.googleapis.com/Source",
+"kind": "host",
+"aliases": []
+},
+{
+"type": "vmmigration.googleapis.com/TargetProject",
+"kind": "host",
+"aliases": []
+},
+{
+"type": "vmmigration.googleapis.com/UtilizationReport",
+"kind": "host",
+"aliases": []
+},
+{
+"type": "vmwareengine.googleapis.com/Cluster",
+"kind": "host",
+"aliases": []
+},
+{
+"type": "vmwareengine.googleapis.com/ExternalAccessRule",
+"kind": "host",
+"aliases": []
+},
+{
+"type": "vmwareengine.googleapis.com/ExternalAddress",
+"kind": "host",
+"aliases": []
+},
+{
+"type": "vmwareengine.googleapis.com/NetworkPeering",
+"kind": "host",
+"aliases": []
+},
+{
+"type": "vmwareengine.googleapis.com/NetworkPolicy",
+"kind": "host",
+"aliases": []
+},
+{
+"type": "vmwareengine.googleapis.com/PrivateCloud",
+"kind": "host",
+"aliases": []
+},
+{
+"type": "vmwareengine.googleapis.com/PrivateConnection",
+"kind": "host",
+"aliases": []
+},
+{
+"type": "vmwareengine.googleapis.com/VmwareEngineNetwork",
+"kind": "host",
+"aliases": []
+},
+{
+"type": "vpcaccess.googleapis.com/Connector",
+"kind": "network",
+"aliases": []
+},
+{
+"type": "websecurityscanner.googleapis.com/ScanConfig",
+"kind": "security",
+"aliases": []
+},
+{
+"type": "workflows.googleapis.com/Workflow",
+"kind": "integration",
+"aliases": []
+},
+{
+"type": "workloadmanager.googleapis.com/Evaluation",
+"kind": "other",
+"aliases": []
+},
+{
+"type": "workstations.googleapis.com/Workstation",
+"kind": "compute",
+"aliases": []
+},
+{
+"type": "workstations.googleapis.com/WorkstationCluster",
+"kind": "compute",
+"aliases": []
+},
+{
+"type": "workstations.googleapis.com/WorkstationConfig",
+"kind": "compute",
+"aliases": []
+}
+]
+}

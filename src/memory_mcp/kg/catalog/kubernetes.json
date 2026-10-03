@@ -1,0 +1,21 @@
+{"provider": "kubernetes", "types": [
+  {"type": "core/Cluster", "kind": "container", "aliases": []},
+  {"type": "core/Node", "kind": "host", "aliases": []},
+  {"type": "core/Namespace", "kind": "container", "aliases": ["kubernetes_namespace", "kubernetes_namespace_v1"]},
+  {"type": "core/Pod", "kind": "container", "aliases": ["kubernetes_pod", "kubernetes_pod_v1"]},
+  {"type": "core/Service", "kind": "network", "aliases": ["kubernetes_service", "kubernetes_service_v1"]},
+  {"type": "core/ServiceAccount", "kind": "identity", "aliases": ["kubernetes_service_account", "kubernetes_service_account_v1"]},
+  {"type": "core/Secret", "kind": "secret", "aliases": ["kubernetes_secret", "kubernetes_secret_v1"]},
+  {"type": "core/ConfigMap", "kind": "other", "aliases": ["kubernetes_config_map", "kubernetes_config_map_v1"]},
+  {"type": "core/PersistentVolume", "kind": "storage", "aliases": ["kubernetes_persistent_volume", "kubernetes_persistent_volume_v1"]},
+  {"type": "core/PersistentVolumeClaim", "kind": "storage", "aliases": ["kubernetes_persistent_volume_claim", "kubernetes_persistent_volume_claim_v1"]},
+  {"type": "apps/Deployment", "kind": "container", "aliases": ["kubernetes_deployment", "kubernetes_deployment_v1"]},
+  {"type": "apps/StatefulSet", "kind": "container", "aliases": ["kubernetes_stateful_set", "kubernetes_stateful_set_v1"]},
+  {"type": "apps/DaemonSet", "kind": "container", "aliases": ["kubernetes_daemon_set_v1", "kubernetes_daemonset"]},
+  {"type": "batch/Job", "kind": "container", "aliases": ["kubernetes_job", "kubernetes_job_v1"]},
+  {"type": "batch/CronJob", "kind": "container", "aliases": ["kubernetes_cron_job", "kubernetes_cron_job_v1"]},
+  {"type": "networking.k8s.io/Ingress", "kind": "network", "aliases": ["kubernetes_ingress_v1"]},
+  {"type": "gateway.networking.k8s.io/Gateway", "kind": "network", "aliases": []},
+  {"type": "gateway.networking.k8s.io/HTTPRoute", "kind": "network", "aliases": []},
+  {"type": "storage.k8s.io/StorageClass", "kind": "storage", "aliases": ["kubernetes_storage_class", "kubernetes_storage_class_v1"]}
+]}
