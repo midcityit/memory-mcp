@@ -37,8 +37,12 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           platforms: linux/amd64,linux/arm64
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          # Registry-backed build cache (shared, NOT branch-scoped) so main reuses
+          # layers already built by dev / a prior main. type=gha is scoped per
+          # branch ref, so main always missed cache and paid the full ~40min
+          # QEMU multi-arch rebuild; type=registry is global to the repo.
+          cache-from: type=registry,ref=ghcr.io/midcityit/memory-mcp:buildcache
+          cache-to: type=registry,ref=ghcr.io/midcityit/memory-mcp:buildcache,mode=max
 
       - name: Trivy vulnerability scan
         uses: aquasecurity/trivy-action@v0.36.0
