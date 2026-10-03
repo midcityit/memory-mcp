@@ -111,20 +111,35 @@ def build_router(service, query, require_token: Callable) -> APIRouter:
     async def import_(graph: str, request: Request):
         _run(service.reg.require_graph, graph)
         ents, edges, xrefs = [], [], []
-        for n, line in enumerate((await request.body()).decode().splitlines(), 1):
+
+        def bad(n, msg):
+            return HTTPException(422, detail={"error": "invalid_json", "message": f"line {n}: {msg}"})
+
+        try:
+            text = (await request.body()).decode("utf-8")
+        except UnicodeDecodeError as e:
+            raise bad(0, f"body is not valid UTF-8: {e}")
+        for n, line in enumerate(text.split("\n"), 1):
             if not line.strip():
                 continue
             try:
                 rec = json.loads(line)
             except json.JSONDecodeError as e:
-                raise HTTPException(422, detail={"error": "invalid_json", "message": f"line {n}: {e}"})
+                raise bad(n, str(e))
+            if not isinstance(rec, dict):
+                raise bad(n, "expected a JSON object")
             record = rec.get("record")
             if record == "entity":
                 ents.append({k: rec.get(k) for k in ENTITY_FIELDS})
             elif record == "edge":
                 edges.append({k: rec.get(k) for k in EDGE_FIELDS})
             elif record == "xref":
+                for f in ("src", "relation", "dst", "note"):
+                    if not isinstance(rec.get(f), str):
+                        raise bad(n, f"xref field '{f}' missing or not a string")
                 xrefs.append(rec)
+            else:
+                raise bad(n, f"missing or unknown record type: {record!r}")
         result = _run(service.batch, graph, ents, edges, "import")
         if result["status"] != "ok":
             raise HTTPException(422, detail=result)

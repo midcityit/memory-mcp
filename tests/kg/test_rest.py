@@ -126,3 +126,28 @@ async def test_hard_delete_requires_flag_and_marks_xrefs(seeded, kg_registry, gs
     assert soft.status_code == 400
     assert hard.status_code == 200 and hard.json()["deleted"] == "logical:MCIT-184"
     assert gstore.xrefs_touching("mcit::logical:MCIT-184")[0].dangling is True
+
+
+ENT_LINE = json.dumps({"record": "entity", "provider": "logical", "type": "jira_issue", "native_id": "MCIT-999"})
+
+
+@pytest.mark.parametrize("bad_line,fragment", [
+    ("[1,2]", "JSON object"),
+    ('{"record": "widget"}', "unknown record"),
+    ('{"record": "xref", "src": "a", "relation": "r", "dst": "b"}', "'note'"),
+    ("{not json", "line 2"),
+])
+async def test_import_rejects_malformed_lines_before_writing(svc, kg_registry, gstore, bad_line, fragment):
+    async with client(make_app(svc, kg_registry, gstore)) as c:
+        r = await c.post("/kg/mcit/import", content=ENT_LINE + "\n" + bad_line + "\n")
+    assert r.status_code == 422
+    d = r.json()["detail"]
+    assert d["error"] == "invalid_json"
+    assert d["message"].startswith("line 2:") and fragment in d["message"]
+    assert gstore.get_entity("mcit", "logical:MCIT-999") is None
+
+
+async def test_import_rejects_non_utf8_body(svc, kg_registry, gstore):
+    async with client(make_app(svc, kg_registry, gstore)) as c:
+        r = await c.post("/kg/mcit/import", content=b"\xff\xfe\n")
+    assert r.status_code == 422 and r.json()["detail"]["error"] == "invalid_json"
