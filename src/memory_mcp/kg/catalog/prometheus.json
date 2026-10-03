@@ -1,0 +1,8 @@
+{"provider": "prometheus", "types": [
+  {"type": "Server", "kind": "observability", "aliases": ["Prometheus"]},
+  {"type": "ScrapeJob", "kind": "observability", "aliases": ["ServiceMonitor", "PodMonitor", "ScrapeConfig"]},
+  {"type": "RuleGroup", "kind": "observability", "aliases": ["PrometheusRule"]},
+  {"type": "Alertmanager", "kind": "observability", "aliases": []},
+  {"type": "Receiver", "kind": "observability", "aliases": ["AlertmanagerConfig"]},
+  {"type": "RemoteWrite", "kind": "observability", "aliases": []}
+]}

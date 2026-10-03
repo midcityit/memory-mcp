@@ -1,0 +1,9 @@
+{"provider": "hyperv", "types": [
+  {"type": "Host", "kind": "host", "aliases": []},
+  {"type": "VM", "kind": "compute", "aliases": ["hyperv_machine_instance"]},
+  {"type": "VMSwitch", "kind": "network", "aliases": ["hyperv_network_switch"]},
+  {"type": "VHD", "kind": "storage", "aliases": ["hyperv_vhd"]},
+  {"type": "Checkpoint", "kind": "storage", "aliases": []},
+  {"type": "FailoverCluster", "kind": "host", "aliases": []},
+  {"type": "ClusterSharedVolume", "kind": "storage", "aliases": []}
+]}

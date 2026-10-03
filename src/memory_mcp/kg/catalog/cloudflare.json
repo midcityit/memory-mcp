@@ -1,0 +1,1902 @@
+{
+"provider": "cloudflare",
+"types": [
+{
+"type": "access_rule",
+"kind": "security",
+"aliases": [
+"cloudflare_access_rule"
+]
+},
+{
+"type": "account",
+"kind": "org",
+"aliases": [
+"cloudflare_account"
+]
+},
+{
+"type": "account_dns_settings",
+"kind": "org",
+"aliases": [
+"cloudflare_account_dns_settings"
+]
+},
+{
+"type": "account_dns_settings_internal_view",
+"kind": "org",
+"aliases": [
+"cloudflare_account_dns_settings_internal_view"
+]
+},
+{
+"type": "account_member",
+"kind": "org",
+"aliases": [
+"cloudflare_account_member"
+]
+},
+{
+"type": "account_subscription",
+"kind": "org",
+"aliases": [
+"cloudflare_account_subscription"
+]
+},
+{
+"type": "account_token",
+"kind": "org",
+"aliases": [
+"cloudflare_account_token"
+]
+},
+{
+"type": "address_map",
+"kind": "edge",
+"aliases": [
+"cloudflare_address_map"
+]
+},
+{
+"type": "ai_gateway",
+"kind": "edge",
+"aliases": [
+"cloudflare_ai_gateway"
+]
+},
+{
+"type": "ai_gateway_dynamic_routing",
+"kind": "edge",
+"aliases": [
+"cloudflare_ai_gateway_dynamic_routing"
+]
+},
+{
+"type": "ai_search_instance",
+"kind": "edge",
+"aliases": [
+"cloudflare_ai_search_instance"
+]
+},
+{
+"type": "ai_search_namespace",
+"kind": "edge",
+"aliases": [
+"cloudflare_ai_search_namespace"
+]
+},
+{
+"type": "ai_search_token",
+"kind": "edge",
+"aliases": [
+"cloudflare_ai_search_token"
+]
+},
+{
+"type": "api_shield",
+"kind": "edge",
+"aliases": [
+"cloudflare_api_shield"
+]
+},
+{
+"type": "api_shield_discovery_operation",
+"kind": "edge",
+"aliases": [
+"cloudflare_api_shield_discovery_operation"
+]
+},
+{
+"type": "api_shield_operation",
+"kind": "edge",
+"aliases": [
+"cloudflare_api_shield_operation"
+]
+},
+{
+"type": "api_shield_operation_schema_validation_settings",
+"kind": "edge",
+"aliases": [
+"cloudflare_api_shield_operation_schema_validation_settings"
+]
+},
+{
+"type": "api_shield_schema",
+"kind": "edge",
+"aliases": [
+"cloudflare_api_shield_schema"
+]
+},
+{
+"type": "api_shield_schema_validation_settings",
+"kind": "edge",
+"aliases": [
+"cloudflare_api_shield_schema_validation_settings"
+]
+},
+{
+"type": "api_token",
+"kind": "edge",
+"aliases": [
+"cloudflare_api_token"
+]
+},
+{
+"type": "argo_smart_routing",
+"kind": "edge",
+"aliases": [
+"cloudflare_argo_smart_routing"
+]
+},
+{
+"type": "argo_tiered_caching",
+"kind": "edge",
+"aliases": [
+"cloudflare_argo_tiered_caching"
+]
+},
+{
+"type": "authenticated_origin_pulls",
+"kind": "edge",
+"aliases": [
+"cloudflare_authenticated_origin_pulls"
+]
+},
+{
+"type": "authenticated_origin_pulls_certificate",
+"kind": "edge",
+"aliases": [
+"cloudflare_authenticated_origin_pulls_certificate"
+]
+},
+{
+"type": "authenticated_origin_pulls_hostname_certificate",
+"kind": "edge",
+"aliases": [
+"cloudflare_authenticated_origin_pulls_hostname_certificate"
+]
+},
+{
+"type": "authenticated_origin_pulls_settings",
+"kind": "edge",
+"aliases": [
+"cloudflare_authenticated_origin_pulls_settings"
+]
+},
+{
+"type": "bot_management",
+"kind": "edge",
+"aliases": [
+"cloudflare_bot_management"
+]
+},
+{
+"type": "byo_ip_prefix",
+"kind": "edge",
+"aliases": [
+"cloudflare_byo_ip_prefix"
+]
+},
+{
+"type": "calls_sfu_app",
+"kind": "edge",
+"aliases": [
+"cloudflare_calls_sfu_app"
+]
+},
+{
+"type": "calls_turn_app",
+"kind": "edge",
+"aliases": [
+"cloudflare_calls_turn_app"
+]
+},
+{
+"type": "certificate_authorities_hostname_associations",
+"kind": "edge",
+"aliases": [
+"cloudflare_certificate_authorities_hostname_associations"
+]
+},
+{
+"type": "certificate_pack",
+"kind": "edge",
+"aliases": [
+"cloudflare_certificate_pack"
+]
+},
+{
+"type": "client_certificate",
+"kind": "edge",
+"aliases": [
+"cloudflare_client_certificate"
+]
+},
+{
+"type": "cloud_connector_rules",
+"kind": "edge",
+"aliases": [
+"cloudflare_cloud_connector_rules"
+]
+},
+{
+"type": "cloudforce_one_request",
+"kind": "edge",
+"aliases": [
+"cloudflare_cloudforce_one_request"
+]
+},
+{
+"type": "cloudforce_one_request_asset",
+"kind": "edge",
+"aliases": [
+"cloudflare_cloudforce_one_request_asset"
+]
+},
+{
+"type": "cloudforce_one_request_message",
+"kind": "edge",
+"aliases": [
+"cloudflare_cloudforce_one_request_message"
+]
+},
+{
+"type": "cloudforce_one_request_priority",
+"kind": "edge",
+"aliases": [
+"cloudflare_cloudforce_one_request_priority"
+]
+},
+{
+"type": "connectivity_directory_service",
+"kind": "edge",
+"aliases": [
+"cloudflare_connectivity_directory_service"
+]
+},
+{
+"type": "content_scanning",
+"kind": "edge",
+"aliases": [
+"cloudflare_content_scanning"
+]
+},
+{
+"type": "content_scanning_expression",
+"kind": "edge",
+"aliases": [
+"cloudflare_content_scanning_expression"
+]
+},
+{
+"type": "ct_alerting",
+"kind": "edge",
+"aliases": [
+"cloudflare_ct_alerting"
+]
+},
+{
+"type": "custom_csr",
+"kind": "edge",
+"aliases": [
+"cloudflare_custom_csr"
+]
+},
+{
+"type": "custom_hostname",
+"kind": "edge",
+"aliases": [
+"cloudflare_custom_hostname"
+]
+},
+{
+"type": "custom_hostname_fallback_origin",
+"kind": "edge",
+"aliases": [
+"cloudflare_custom_hostname_fallback_origin"
+]
+},
+{
+"type": "custom_origin_trust_store",
+"kind": "edge",
+"aliases": [
+"cloudflare_custom_origin_trust_store"
+]
+},
+{
+"type": "custom_page_asset",
+"kind": "edge",
+"aliases": [
+"cloudflare_custom_page_asset"
+]
+},
+{
+"type": "custom_pages",
+"kind": "edge",
+"aliases": [
+"cloudflare_custom_pages"
+]
+},
+{
+"type": "custom_ssl",
+"kind": "edge",
+"aliases": [
+"cloudflare_custom_ssl"
+]
+},
+{
+"type": "d1_database",
+"kind": "edge",
+"aliases": [
+"cloudflare_d1_database"
+]
+},
+{
+"type": "dls_prefix_binding",
+"kind": "edge",
+"aliases": [
+"cloudflare_dls_prefix_binding"
+]
+},
+{
+"type": "dns_firewall",
+"kind": "dns",
+"aliases": [
+"cloudflare_dns_firewall"
+]
+},
+{
+"type": "dns_record",
+"kind": "dns",
+"aliases": [
+"cloudflare_dns_record"
+]
+},
+{
+"type": "dns_zone_transfers_acl",
+"kind": "dns",
+"aliases": [
+"cloudflare_dns_zone_transfers_acl"
+]
+},
+{
+"type": "dns_zone_transfers_incoming",
+"kind": "dns",
+"aliases": [
+"cloudflare_dns_zone_transfers_incoming"
+]
+},
+{
+"type": "dns_zone_transfers_outgoing",
+"kind": "dns",
+"aliases": [
+"cloudflare_dns_zone_transfers_outgoing"
+]
+},
+{
+"type": "dns_zone_transfers_peer",
+"kind": "dns",
+"aliases": [
+"cloudflare_dns_zone_transfers_peer"
+]
+},
+{
+"type": "dns_zone_transfers_tsig",
+"kind": "dns",
+"aliases": [
+"cloudflare_dns_zone_transfers_tsig"
+]
+},
+{
+"type": "email_routing_address",
+"kind": "edge",
+"aliases": [
+"cloudflare_email_routing_address"
+]
+},
+{
+"type": "email_routing_catch_all",
+"kind": "edge",
+"aliases": [
+"cloudflare_email_routing_catch_all"
+]
+},
+{
+"type": "email_routing_dns",
+"kind": "edge",
+"aliases": [
+"cloudflare_email_routing_dns"
+]
+},
+{
+"type": "email_routing_rule",
+"kind": "edge",
+"aliases": [
+"cloudflare_email_routing_rule"
+]
+},
+{
+"type": "email_routing_settings",
+"kind": "edge",
+"aliases": [
+"cloudflare_email_routing_settings"
+]
+},
+{
+"type": "email_security_allow_policy",
+"kind": "edge",
+"aliases": [
+"cloudflare_email_security_allow_policy"
+]
+},
+{
+"type": "email_security_block_sender",
+"kind": "edge",
+"aliases": [
+"cloudflare_email_security_block_sender"
+]
+},
+{
+"type": "email_security_domain",
+"kind": "edge",
+"aliases": [
+"cloudflare_email_security_domain"
+]
+},
+{
+"type": "email_security_impersonation_registry",
+"kind": "edge",
+"aliases": [
+"cloudflare_email_security_impersonation_registry"
+]
+},
+{
+"type": "email_security_trusted_domains",
+"kind": "edge",
+"aliases": [
+"cloudflare_email_security_trusted_domains"
+]
+},
+{
+"type": "email_sending_subdomain",
+"kind": "edge",
+"aliases": [
+"cloudflare_email_sending_subdomain"
+]
+},
+{
+"type": "field_extractor",
+"kind": "edge",
+"aliases": [
+"cloudflare_field_extractor"
+]
+},
+{
+"type": "filter",
+"kind": "edge",
+"aliases": [
+"cloudflare_filter"
+]
+},
+{
+"type": "firewall_rule",
+"kind": "security",
+"aliases": [
+"cloudflare_firewall_rule"
+]
+},
+{
+"type": "flagship_app",
+"kind": "edge",
+"aliases": [
+"cloudflare_flagship_app"
+]
+},
+{
+"type": "flagship_flag",
+"kind": "edge",
+"aliases": [
+"cloudflare_flagship_flag"
+]
+},
+{
+"type": "google_tag_gateway",
+"kind": "edge",
+"aliases": [
+"cloudflare_google_tag_gateway"
+]
+},
+{
+"type": "healthcheck",
+"kind": "edge",
+"aliases": [
+"cloudflare_healthcheck"
+]
+},
+{
+"type": "hostname_tls_setting",
+"kind": "edge",
+"aliases": [
+"cloudflare_hostname_tls_setting"
+]
+},
+{
+"type": "hyperdrive_config",
+"kind": "edge",
+"aliases": [
+"cloudflare_hyperdrive_config"
+]
+},
+{
+"type": "image",
+"kind": "edge",
+"aliases": [
+"cloudflare_image"
+]
+},
+{
+"type": "image_variant",
+"kind": "edge",
+"aliases": [
+"cloudflare_image_variant"
+]
+},
+{
+"type": "keyless_certificate",
+"kind": "edge",
+"aliases": [
+"cloudflare_keyless_certificate"
+]
+},
+{
+"type": "leaked_credential_check",
+"kind": "edge",
+"aliases": [
+"cloudflare_leaked_credential_check"
+]
+},
+{
+"type": "leaked_credential_check_rule",
+"kind": "edge",
+"aliases": [
+"cloudflare_leaked_credential_check_rule"
+]
+},
+{
+"type": "list",
+"kind": "edge",
+"aliases": [
+"cloudflare_list"
+]
+},
+{
+"type": "list_item",
+"kind": "edge",
+"aliases": [
+"cloudflare_list_item"
+]
+},
+{
+"type": "load_balancer",
+"kind": "network",
+"aliases": [
+"cloudflare_load_balancer"
+]
+},
+{
+"type": "load_balancer_monitor",
+"kind": "network",
+"aliases": [
+"cloudflare_load_balancer_monitor"
+]
+},
+{
+"type": "load_balancer_monitor_group",
+"kind": "network",
+"aliases": [
+"cloudflare_load_balancer_monitor_group"
+]
+},
+{
+"type": "load_balancer_pool",
+"kind": "network",
+"aliases": [
+"cloudflare_load_balancer_pool"
+]
+},
+{
+"type": "logpull_retention",
+"kind": "edge",
+"aliases": [
+"cloudflare_logpull_retention"
+]
+},
+{
+"type": "logpush_job",
+"kind": "edge",
+"aliases": [
+"cloudflare_logpush_job"
+]
+},
+{
+"type": "logpush_ownership_challenge",
+"kind": "edge",
+"aliases": [
+"cloudflare_logpush_ownership_challenge"
+]
+},
+{
+"type": "magic_network_monitoring_configuration",
+"kind": "network",
+"aliases": [
+"cloudflare_magic_network_monitoring_configuration"
+]
+},
+{
+"type": "magic_network_monitoring_rule",
+"kind": "network",
+"aliases": [
+"cloudflare_magic_network_monitoring_rule"
+]
+},
+{
+"type": "magic_transit_cf1_site",
+"kind": "network",
+"aliases": [
+"cloudflare_magic_transit_cf1_site"
+]
+},
+{
+"type": "magic_transit_connector",
+"kind": "network",
+"aliases": [
+"cloudflare_magic_transit_connector"
+]
+},
+{
+"type": "magic_transit_site",
+"kind": "network",
+"aliases": [
+"cloudflare_magic_transit_site"
+]
+},
+{
+"type": "magic_transit_site_acl",
+"kind": "network",
+"aliases": [
+"cloudflare_magic_transit_site_acl"
+]
+},
+{
+"type": "magic_transit_site_lan",
+"kind": "network",
+"aliases": [
+"cloudflare_magic_transit_site_lan"
+]
+},
+{
+"type": "magic_transit_site_wan",
+"kind": "network",
+"aliases": [
+"cloudflare_magic_transit_site_wan"
+]
+},
+{
+"type": "magic_wan_bgp_filter_profile",
+"kind": "network",
+"aliases": [
+"cloudflare_magic_wan_bgp_filter_profile"
+]
+},
+{
+"type": "magic_wan_gre_tunnel",
+"kind": "network",
+"aliases": [
+"cloudflare_magic_wan_gre_tunnel"
+]
+},
+{
+"type": "magic_wan_ipsec_tunnel",
+"kind": "network",
+"aliases": [
+"cloudflare_magic_wan_ipsec_tunnel"
+]
+},
+{
+"type": "magic_wan_static_route",
+"kind": "network",
+"aliases": [
+"cloudflare_magic_wan_static_route"
+]
+},
+{
+"type": "managed_transforms",
+"kind": "edge",
+"aliases": [
+"cloudflare_managed_transforms"
+]
+},
+{
+"type": "moq_relay",
+"kind": "edge",
+"aliases": [
+"cloudflare_moq_relay"
+]
+},
+{
+"type": "mtls_certificate",
+"kind": "edge",
+"aliases": [
+"cloudflare_mtls_certificate"
+]
+},
+{
+"type": "nel_setting",
+"kind": "edge",
+"aliases": [
+"cloudflare_nel_setting"
+]
+},
+{
+"type": "notification_policy",
+"kind": "edge",
+"aliases": [
+"cloudflare_notification_policy"
+]
+},
+{
+"type": "notification_policy_webhooks",
+"kind": "edge",
+"aliases": [
+"cloudflare_notification_policy_webhooks"
+]
+},
+{
+"type": "oauth_client",
+"kind": "edge",
+"aliases": [
+"cloudflare_oauth_client"
+]
+},
+{
+"type": "observatory_scheduled_test",
+"kind": "edge",
+"aliases": [
+"cloudflare_observatory_scheduled_test"
+]
+},
+{
+"type": "organization",
+"kind": "edge",
+"aliases": [
+"cloudflare_organization"
+]
+},
+{
+"type": "organization_profile",
+"kind": "edge",
+"aliases": [
+"cloudflare_organization_profile"
+]
+},
+{
+"type": "origin_ca_certificate",
+"kind": "edge",
+"aliases": [
+"cloudflare_origin_ca_certificate"
+]
+},
+{
+"type": "origin_cloud_region",
+"kind": "edge",
+"aliases": [
+"cloudflare_origin_cloud_region"
+]
+},
+{
+"type": "origin_tls_compliance_modes",
+"kind": "edge",
+"aliases": [
+"cloudflare_origin_tls_compliance_modes"
+]
+},
+{
+"type": "page_rule",
+"kind": "edge",
+"aliases": [
+"cloudflare_page_rule"
+]
+},
+{
+"type": "page_shield_policy",
+"kind": "edge",
+"aliases": [
+"cloudflare_page_shield_policy"
+]
+},
+{
+"type": "pages_domain",
+"kind": "compute",
+"aliases": [
+"cloudflare_pages_domain"
+]
+},
+{
+"type": "pages_project",
+"kind": "compute",
+"aliases": [
+"cloudflare_pages_project"
+]
+},
+{
+"type": "pipeline",
+"kind": "edge",
+"aliases": [
+"cloudflare_pipeline"
+]
+},
+{
+"type": "pipeline_sink",
+"kind": "edge",
+"aliases": [
+"cloudflare_pipeline_sink"
+]
+},
+{
+"type": "pipeline_stream",
+"kind": "edge",
+"aliases": [
+"cloudflare_pipeline_stream"
+]
+},
+{
+"type": "precursor",
+"kind": "edge",
+"aliases": [
+"cloudflare_precursor"
+]
+},
+{
+"type": "queue",
+"kind": "edge",
+"aliases": [
+"cloudflare_queue"
+]
+},
+{
+"type": "queue_consumer",
+"kind": "edge",
+"aliases": [
+"cloudflare_queue_consumer"
+]
+},
+{
+"type": "r2_bucket",
+"kind": "storage",
+"aliases": [
+"cloudflare_r2_bucket"
+]
+},
+{
+"type": "r2_bucket_cors",
+"kind": "storage",
+"aliases": [
+"cloudflare_r2_bucket_cors"
+]
+},
+{
+"type": "r2_bucket_event_notification",
+"kind": "storage",
+"aliases": [
+"cloudflare_r2_bucket_event_notification"
+]
+},
+{
+"type": "r2_bucket_lifecycle",
+"kind": "storage",
+"aliases": [
+"cloudflare_r2_bucket_lifecycle"
+]
+},
+{
+"type": "r2_bucket_lock",
+"kind": "storage",
+"aliases": [
+"cloudflare_r2_bucket_lock"
+]
+},
+{
+"type": "r2_bucket_sippy",
+"kind": "storage",
+"aliases": [
+"cloudflare_r2_bucket_sippy"
+]
+},
+{
+"type": "r2_custom_domain",
+"kind": "storage",
+"aliases": [
+"cloudflare_r2_custom_domain"
+]
+},
+{
+"type": "r2_data_catalog",
+"kind": "storage",
+"aliases": [
+"cloudflare_r2_data_catalog"
+]
+},
+{
+"type": "r2_managed_domain",
+"kind": "storage",
+"aliases": [
+"cloudflare_r2_managed_domain"
+]
+},
+{
+"type": "rate_limit",
+"kind": "edge",
+"aliases": [
+"cloudflare_rate_limit"
+]
+},
+{
+"type": "regional_hostname",
+"kind": "edge",
+"aliases": [
+"cloudflare_regional_hostname"
+]
+},
+{
+"type": "regional_tiered_cache",
+"kind": "edge",
+"aliases": [
+"cloudflare_regional_tiered_cache"
+]
+},
+{
+"type": "registrar_domain",
+"kind": "edge",
+"aliases": [
+"cloudflare_registrar_domain"
+]
+},
+{
+"type": "ruleset",
+"kind": "security",
+"aliases": [
+"cloudflare_ruleset"
+]
+},
+{
+"type": "schema_validation_operation_settings",
+"kind": "edge",
+"aliases": [
+"cloudflare_schema_validation_operation_settings"
+]
+},
+{
+"type": "schema_validation_schemas",
+"kind": "edge",
+"aliases": [
+"cloudflare_schema_validation_schemas"
+]
+},
+{
+"type": "schema_validation_settings",
+"kind": "edge",
+"aliases": [
+"cloudflare_schema_validation_settings"
+]
+},
+{
+"type": "secrets_store",
+"kind": "edge",
+"aliases": [
+"cloudflare_secrets_store"
+]
+},
+{
+"type": "secrets_store_secret",
+"kind": "edge",
+"aliases": [
+"cloudflare_secrets_store_secret"
+]
+},
+{
+"type": "share",
+"kind": "edge",
+"aliases": [
+"cloudflare_share"
+]
+},
+{
+"type": "share_recipient",
+"kind": "edge",
+"aliases": [
+"cloudflare_share_recipient"
+]
+},
+{
+"type": "share_resource",
+"kind": "edge",
+"aliases": [
+"cloudflare_share_resource"
+]
+},
+{
+"type": "snippet",
+"kind": "edge",
+"aliases": [
+"cloudflare_snippet"
+]
+},
+{
+"type": "snippet_rules",
+"kind": "edge",
+"aliases": [
+"cloudflare_snippet_rules"
+]
+},
+{
+"type": "snippets",
+"kind": "edge",
+"aliases": [
+"cloudflare_snippets"
+]
+},
+{
+"type": "spectrum_application",
+"kind": "edge",
+"aliases": [
+"cloudflare_spectrum_application"
+]
+},
+{
+"type": "sso_connector",
+"kind": "edge",
+"aliases": [
+"cloudflare_sso_connector"
+]
+},
+{
+"type": "stream",
+"kind": "edge",
+"aliases": [
+"cloudflare_stream"
+]
+},
+{
+"type": "stream_audio_track",
+"kind": "edge",
+"aliases": [
+"cloudflare_stream_audio_track"
+]
+},
+{
+"type": "stream_caption_language",
+"kind": "edge",
+"aliases": [
+"cloudflare_stream_caption_language"
+]
+},
+{
+"type": "stream_download",
+"kind": "edge",
+"aliases": [
+"cloudflare_stream_download"
+]
+},
+{
+"type": "stream_key",
+"kind": "edge",
+"aliases": [
+"cloudflare_stream_key"
+]
+},
+{
+"type": "stream_live_input",
+"kind": "edge",
+"aliases": [
+"cloudflare_stream_live_input"
+]
+},
+{
+"type": "stream_watermark",
+"kind": "edge",
+"aliases": [
+"cloudflare_stream_watermark"
+]
+},
+{
+"type": "stream_webhook",
+"kind": "edge",
+"aliases": [
+"cloudflare_stream_webhook"
+]
+},
+{
+"type": "tiered_cache",
+"kind": "edge",
+"aliases": [
+"cloudflare_tiered_cache"
+]
+},
+{
+"type": "token_validation_config",
+"kind": "edge",
+"aliases": [
+"cloudflare_token_validation_config"
+]
+},
+{
+"type": "token_validation_rules",
+"kind": "edge",
+"aliases": [
+"cloudflare_token_validation_rules"
+]
+},
+{
+"type": "total_tls",
+"kind": "edge",
+"aliases": [
+"cloudflare_total_tls"
+]
+},
+{
+"type": "turnstile_widget",
+"kind": "edge",
+"aliases": [
+"cloudflare_turnstile_widget"
+]
+},
+{
+"type": "universal_ssl_setting",
+"kind": "edge",
+"aliases": [
+"cloudflare_universal_ssl_setting"
+]
+},
+{
+"type": "url_normalization_settings",
+"kind": "edge",
+"aliases": [
+"cloudflare_url_normalization_settings"
+]
+},
+{
+"type": "user",
+"kind": "edge",
+"aliases": [
+"cloudflare_user"
+]
+},
+{
+"type": "user_agent_blocking_rule",
+"kind": "edge",
+"aliases": [
+"cloudflare_user_agent_blocking_rule"
+]
+},
+{
+"type": "user_group",
+"kind": "edge",
+"aliases": [
+"cloudflare_user_group"
+]
+},
+{
+"type": "user_group_members",
+"kind": "edge",
+"aliases": [
+"cloudflare_user_group_members"
+]
+},
+{
+"type": "vulnerability_scanner_credential",
+"kind": "edge",
+"aliases": [
+"cloudflare_vulnerability_scanner_credential"
+]
+},
+{
+"type": "vulnerability_scanner_credential_set",
+"kind": "edge",
+"aliases": [
+"cloudflare_vulnerability_scanner_credential_set"
+]
+},
+{
+"type": "vulnerability_scanner_target_environment",
+"kind": "edge",
+"aliases": [
+"cloudflare_vulnerability_scanner_target_environment"
+]
+},
+{
+"type": "waiting_room",
+"kind": "edge",
+"aliases": [
+"cloudflare_waiting_room"
+]
+},
+{
+"type": "waiting_room_event",
+"kind": "edge",
+"aliases": [
+"cloudflare_waiting_room_event"
+]
+},
+{
+"type": "waiting_room_rules",
+"kind": "edge",
+"aliases": [
+"cloudflare_waiting_room_rules"
+]
+},
+{
+"type": "waiting_room_settings",
+"kind": "edge",
+"aliases": [
+"cloudflare_waiting_room_settings"
+]
+},
+{
+"type": "web3_hostname",
+"kind": "edge",
+"aliases": [
+"cloudflare_web3_hostname"
+]
+},
+{
+"type": "web_analytics_rule",
+"kind": "edge",
+"aliases": [
+"cloudflare_web_analytics_rule"
+]
+},
+{
+"type": "web_analytics_site",
+"kind": "edge",
+"aliases": [
+"cloudflare_web_analytics_site"
+]
+},
+{
+"type": "worker",
+"kind": "edge",
+"aliases": [
+"cloudflare_worker"
+]
+},
+{
+"type": "worker_version",
+"kind": "compute",
+"aliases": [
+"cloudflare_worker_version"
+]
+},
+{
+"type": "workers_cron_trigger",
+"kind": "compute",
+"aliases": [
+"cloudflare_workers_cron_trigger"
+]
+},
+{
+"type": "workers_custom_domain",
+"kind": "compute",
+"aliases": [
+"cloudflare_workers_custom_domain"
+]
+},
+{
+"type": "workers_deployment",
+"kind": "compute",
+"aliases": [
+"cloudflare_workers_deployment"
+]
+},
+{
+"type": "workers_for_platforms_dispatch_namespace",
+"kind": "compute",
+"aliases": [
+"cloudflare_workers_for_platforms_dispatch_namespace"
+]
+},
+{
+"type": "workers_kv",
+"kind": "compute",
+"aliases": [
+"cloudflare_workers_kv"
+]
+},
+{
+"type": "workers_kv_namespace",
+"kind": "compute",
+"aliases": [
+"cloudflare_workers_kv_namespace"
+]
+},
+{
+"type": "workers_route",
+"kind": "compute",
+"aliases": [
+"cloudflare_workers_route"
+]
+},
+{
+"type": "workers_script",
+"kind": "compute",
+"aliases": [
+"cloudflare_workers_script"
+]
+},
+{
+"type": "workers_script_subdomain",
+"kind": "compute",
+"aliases": [
+"cloudflare_workers_script_subdomain"
+]
+},
+{
+"type": "workflow",
+"kind": "edge",
+"aliases": [
+"cloudflare_workflow"
+]
+},
+{
+"type": "zero_trust_access_ai_controls_mcp_portal",
+"kind": "security",
+"aliases": [
+"cloudflare_zero_trust_access_ai_controls_mcp_portal"
+]
+},
+{
+"type": "zero_trust_access_ai_controls_mcp_server",
+"kind": "security",
+"aliases": [
+"cloudflare_zero_trust_access_ai_controls_mcp_server"
+]
+},
+{
+"type": "zero_trust_access_application",
+"kind": "security",
+"aliases": [
+"cloudflare_zero_trust_access_application"
+]
+},
+{
+"type": "zero_trust_access_custom_page",
+"kind": "security",
+"aliases": [
+"cloudflare_zero_trust_access_custom_page"
+]
+},
+{
+"type": "zero_trust_access_group",
+"kind": "security",
+"aliases": [
+"cloudflare_zero_trust_access_group"
+]
+},
+{
+"type": "zero_trust_access_identity_provider",
+"kind": "security",
+"aliases": [
+"cloudflare_zero_trust_access_identity_provider"
+]
+},
+{
+"type": "zero_trust_access_infrastructure_target",
+"kind": "security",
+"aliases": [
+"cloudflare_zero_trust_access_infrastructure_target"
+]
+},
+{
+"type": "zero_trust_access_key_configuration",
+"kind": "security",
+"aliases": [
+"cloudflare_zero_trust_access_key_configuration"
+]
+},
+{
+"type": "zero_trust_access_mtls_certificate",
+"kind": "security",
+"aliases": [
+"cloudflare_zero_trust_access_mtls_certificate"
+]
+},
+{
+"type": "zero_trust_access_mtls_hostname_settings",
+"kind": "security",
+"aliases": [
+"cloudflare_zero_trust_access_mtls_hostname_settings"
+]
+},
+{
+"type": "zero_trust_access_policy",
+"kind": "security",
+"aliases": [
+"cloudflare_zero_trust_access_policy"
+]
+},
+{
+"type": "zero_trust_access_service_token",
+"kind": "security",
+"aliases": [
+"cloudflare_zero_trust_access_service_token"
+]
+},
+{
+"type": "zero_trust_access_short_lived_certificate",
+"kind": "security",
+"aliases": [
+"cloudflare_zero_trust_access_short_lived_certificate"
+]
+},
+{
+"type": "zero_trust_access_tag",
+"kind": "security",
+"aliases": [
+"cloudflare_zero_trust_access_tag"
+]
+},
+{
+"type": "zero_trust_casb_policy",
+"kind": "edge",
+"aliases": [
+"cloudflare_zero_trust_casb_policy"
+]
+},
+{
+"type": "zero_trust_casb_webhook",
+"kind": "edge",
+"aliases": [
+"cloudflare_zero_trust_casb_webhook"
+]
+},
+{
+"type": "zero_trust_connectivity_settings",
+"kind": "edge",
+"aliases": [
+"cloudflare_zero_trust_connectivity_settings"
+]
+},
+{
+"type": "zero_trust_device_custom_profile",
+"kind": "security",
+"aliases": [
+"cloudflare_zero_trust_device_custom_profile"
+]
+},
+{
+"type": "zero_trust_device_custom_profile_local_domain_fallback",
+"kind": "security",
+"aliases": [
+"cloudflare_zero_trust_device_custom_profile_local_domain_fallback"
+]
+},
+{
+"type": "zero_trust_device_default_profile",
+"kind": "security",
+"aliases": [
+"cloudflare_zero_trust_device_default_profile"
+]
+},
+{
+"type": "zero_trust_device_default_profile_certificates",
+"kind": "security",
+"aliases": [
+"cloudflare_zero_trust_device_default_profile_certificates"
+]
+},
+{
+"type": "zero_trust_device_default_profile_local_domain_fallback",
+"kind": "security",
+"aliases": [
+"cloudflare_zero_trust_device_default_profile_local_domain_fallback"
+]
+},
+{
+"type": "zero_trust_device_deployment_groups",
+"kind": "security",
+"aliases": [
+"cloudflare_zero_trust_device_deployment_groups"
+]
+},
+{
+"type": "zero_trust_device_ip_profile",
+"kind": "security",
+"aliases": [
+"cloudflare_zero_trust_device_ip_profile"
+]
+},
+{
+"type": "zero_trust_device_managed_networks",
+"kind": "security",
+"aliases": [
+"cloudflare_zero_trust_device_managed_networks"
+]
+},
+{
+"type": "zero_trust_device_posture_integration",
+"kind": "security",
+"aliases": [
+"cloudflare_zero_trust_device_posture_integration"
+]
+},
+{
+"type": "zero_trust_device_posture_rule",
+"kind": "security",
+"aliases": [
+"cloudflare_zero_trust_device_posture_rule"
+]
+},
+{
+"type": "zero_trust_device_settings",
+"kind": "security",
+"aliases": [
+"cloudflare_zero_trust_device_settings"
+]
+},
+{
+"type": "zero_trust_device_subnet",
+"kind": "security",
+"aliases": [
+"cloudflare_zero_trust_device_subnet"
+]
+},
+{
+"type": "zero_trust_dex_rule",
+"kind": "edge",
+"aliases": [
+"cloudflare_zero_trust_dex_rule"
+]
+},
+{
+"type": "zero_trust_dex_test",
+"kind": "edge",
+"aliases": [
+"cloudflare_zero_trust_dex_test"
+]
+},
+{
+"type": "zero_trust_dlp_custom_entry",
+"kind": "edge",
+"aliases": [
+"cloudflare_zero_trust_dlp_custom_entry"
+]
+},
+{
+"type": "zero_trust_dlp_custom_profile",
+"kind": "edge",
+"aliases": [
+"cloudflare_zero_trust_dlp_custom_profile"
+]
+},
+{
+"type": "zero_trust_dlp_data_class",
+"kind": "edge",
+"aliases": [
+"cloudflare_zero_trust_dlp_data_class"
+]
+},
+{
+"type": "zero_trust_dlp_data_tag",
+"kind": "edge",
+"aliases": [
+"cloudflare_zero_trust_dlp_data_tag"
+]
+},
+{
+"type": "zero_trust_dlp_data_tag_category",
+"kind": "edge",
+"aliases": [
+"cloudflare_zero_trust_dlp_data_tag_category"
+]
+},
+{
+"type": "zero_trust_dlp_dataset",
+"kind": "edge",
+"aliases": [
+"cloudflare_zero_trust_dlp_dataset"
+]
+},
+{
+"type": "zero_trust_dlp_entry",
+"kind": "edge",
+"aliases": [
+"cloudflare_zero_trust_dlp_entry"
+]
+},
+{
+"type": "zero_trust_dlp_integration_entry",
+"kind": "edge",
+"aliases": [
+"cloudflare_zero_trust_dlp_integration_entry"
+]
+},
+{
+"type": "zero_trust_dlp_predefined_entry",
+"kind": "edge",
+"aliases": [
+"cloudflare_zero_trust_dlp_predefined_entry"
+]
+},
+{
+"type": "zero_trust_dlp_predefined_profile",
+"kind": "edge",
+"aliases": [
+"cloudflare_zero_trust_dlp_predefined_profile"
+]
+},
+{
+"type": "zero_trust_dlp_sensitivity_group",
+"kind": "edge",
+"aliases": [
+"cloudflare_zero_trust_dlp_sensitivity_group"
+]
+},
+{
+"type": "zero_trust_dlp_sensitivity_level",
+"kind": "edge",
+"aliases": [
+"cloudflare_zero_trust_dlp_sensitivity_level"
+]
+},
+{
+"type": "zero_trust_dlp_sensitivity_level_order",
+"kind": "edge",
+"aliases": [
+"cloudflare_zero_trust_dlp_sensitivity_level_order"
+]
+},
+{
+"type": "zero_trust_dlp_settings",
+"kind": "edge",
+"aliases": [
+"cloudflare_zero_trust_dlp_settings"
+]
+},
+{
+"type": "zero_trust_dns_location",
+"kind": "edge",
+"aliases": [
+"cloudflare_zero_trust_dns_location"
+]
+},
+{
+"type": "zero_trust_gateway_certificate",
+"kind": "security",
+"aliases": [
+"cloudflare_zero_trust_gateway_certificate"
+]
+},
+{
+"type": "zero_trust_gateway_logging",
+"kind": "security",
+"aliases": [
+"cloudflare_zero_trust_gateway_logging"
+]
+},
+{
+"type": "zero_trust_gateway_pacfile",
+"kind": "security",
+"aliases": [
+"cloudflare_zero_trust_gateway_pacfile"
+]
+},
+{
+"type": "zero_trust_gateway_policy",
+"kind": "security",
+"aliases": [
+"cloudflare_zero_trust_gateway_policy"
+]
+},
+{
+"type": "zero_trust_gateway_proxy_endpoint",
+"kind": "security",
+"aliases": [
+"cloudflare_zero_trust_gateway_proxy_endpoint"
+]
+},
+{
+"type": "zero_trust_gateway_settings",
+"kind": "security",
+"aliases": [
+"cloudflare_zero_trust_gateway_settings"
+]
+},
+{
+"type": "zero_trust_list",
+"kind": "security",
+"aliases": [
+"cloudflare_zero_trust_list"
+]
+},
+{
+"type": "zero_trust_network_hostname_route",
+"kind": "edge",
+"aliases": [
+"cloudflare_zero_trust_network_hostname_route"
+]
+},
+{
+"type": "zero_trust_organization",
+"kind": "edge",
+"aliases": [
+"cloudflare_zero_trust_organization"
+]
+},
+{
+"type": "zero_trust_resource_library_application",
+"kind": "edge",
+"aliases": [
+"cloudflare_zero_trust_resource_library_application"
+]
+},
+{
+"type": "zero_trust_risk_behavior",
+"kind": "edge",
+"aliases": [
+"cloudflare_zero_trust_risk_behavior"
+]
+},
+{
+"type": "zero_trust_risk_scoring_integration",
+"kind": "edge",
+"aliases": [
+"cloudflare_zero_trust_risk_scoring_integration"
+]
+},
+{
+"type": "zero_trust_tunnel_cloudflared",
+"kind": "network",
+"aliases": [
+"cloudflare_zero_trust_tunnel_cloudflared"
+]
+},
+{
+"type": "zero_trust_tunnel_cloudflared_config",
+"kind": "network",
+"aliases": [
+"cloudflare_zero_trust_tunnel_cloudflared_config"
+]
+},
+{
+"type": "zero_trust_tunnel_cloudflared_route",
+"kind": "network",
+"aliases": [
+"cloudflare_zero_trust_tunnel_cloudflared_route"
+]
+},
+{
+"type": "zero_trust_tunnel_cloudflared_virtual_network",
+"kind": "network",
+"aliases": [
+"cloudflare_zero_trust_tunnel_cloudflared_virtual_network"
+]
+},
+{
+"type": "zero_trust_tunnel_warp_connector",
+"kind": "network",
+"aliases": [
+"cloudflare_zero_trust_tunnel_warp_connector"
+]
+},
+{
+"type": "zero_trust_tunnel_warp_connector_config",
+"kind": "network",
+"aliases": [
+"cloudflare_zero_trust_tunnel_warp_connector_config"
+]
+},
+{
+"type": "zone",
+"kind": "org",
+"aliases": [
+"cloudflare_zone"
+]
+},
+{
+"type": "zone_auto_origin_tls_kex",
+"kind": "org",
+"aliases": [
+"cloudflare_zone_auto_origin_tls_kex"
+]
+},
+{
+"type": "zone_cache_reserve",
+"kind": "org",
+"aliases": [
+"cloudflare_zone_cache_reserve"
+]
+},
+{
+"type": "zone_cache_variants",
+"kind": "org",
+"aliases": [
+"cloudflare_zone_cache_variants"
+]
+},
+{
+"type": "zone_dns_settings",
+"kind": "org",
+"aliases": [
+"cloudflare_zone_dns_settings"
+]
+},
+{
+"type": "zone_dnssec",
+"kind": "org",
+"aliases": [
+"cloudflare_zone_dnssec"
+]
+},
+{
+"type": "zone_hold",
+"kind": "org",
+"aliases": [
+"cloudflare_zone_hold"
+]
+},
+{
+"type": "zone_lockdown",
+"kind": "org",
+"aliases": [
+"cloudflare_zone_lockdown"
+]
+},
+{
+"type": "zone_setting",
+"kind": "org",
+"aliases": [
+"cloudflare_zone_setting"
+]
+},
+{
+"type": "zone_subscription",
+"kind": "org",
+"aliases": [
+"cloudflare_zone_subscription"
+]
+},
+{
+"type": "zone_tracing",
+"kind": "org",
+"aliases": [
+"cloudflare_zone_tracing"
+]
+},
+{
+"type": "zone_tracing_rules",
+"kind": "org",
+"aliases": [
+"cloudflare_zone_tracing_rules"
+]
+}
+]
+}

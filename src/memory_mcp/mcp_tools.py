@@ -20,7 +20,7 @@ def streamable_http_app():
     )
 
 
-def _init(store: MemoryStore) -> None:
+def _init(store: MemoryStore, kg=None) -> None:
     """Bind a live MemoryStore into the tool closures."""
 
     @mcp.tool()
@@ -91,3 +91,7 @@ def _init(store: MemoryStore) -> None:
         """Delete a memory by ID."""
         ok = store.delete(memory_id)
         return {"deleted": ok}
+
+    if kg is not None:
+        from memory_mcp.kg.tools import register
+        register(mcp, kg.service, kg.query)

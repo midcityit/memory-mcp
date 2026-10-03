@@ -1,0 +1,6 @@
+{"record": "entity", "provider": "azure", "type": "azurerm_kubernetes_cluster", "native_id": "${VTV_AKS_ID}", "display_name": "aks-vtv-prod"}
+{"record": "entity", "provider": "logical", "type": "workload", "native_id": "customer-solutions-tools", "display_name": "customer-solutions-tools (CMA Tool)"}
+{"record": "entity", "provider": "logical", "type": "jira_issue", "native_id": "VTV-238", "display_name": "VTV-238 customer-solutions-tools-prod to aks-vtv-prod + Key Vault CSI"}
+{"record": "edge", "src": "logical:customer-solutions-tools", "relation": "runs_on", "dst": "azure:${VTV_AKS_ID_LC}"}
+{"record": "edge", "src": "logical:customer-solutions-tools", "relation": "tracked_in", "dst": "logical:VTV-238"}
+{"record": "xref", "src": "vtv::logical:VTV-238", "relation": "pattern_from", "dst": "mcit::logical:MCIT-184", "note": "Key Vault CSI SecretProviderClass pattern first proven on mcit-k8s (MCIT-184), reused for aks-vtv-prod (VTV-238)"}

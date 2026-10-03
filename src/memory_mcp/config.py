@@ -9,6 +9,10 @@ class Config:
     stale_days: int
     otlp_endpoint: str
     default_list_limit: int
+    kg_enabled: bool = False
+    kg_config_dir: str | None = None
+    kg_dup_threshold: float = 0.90
+    kg_max_chars: int = 6000
 
 
 def load_config() -> Config:
@@ -21,4 +25,8 @@ def load_config() -> Config:
             "http://otel-collector.monitoring.svc.cluster.local:4317",
         ),
         default_list_limit=int(os.environ.get("DEFAULT_LIST_LIMIT", "1000")),
+        kg_enabled=os.environ.get("KG_ENABLED", "false").strip().lower() in ("1", "true", "yes"),
+        kg_config_dir=os.environ.get("KG_CONFIG_DIR") or None,
+        kg_dup_threshold=float(os.environ.get("KG_DUP_THRESHOLD", "0.90")),
+        kg_max_chars=int(os.environ.get("KG_MAX_CHARS", "6000")),
     )

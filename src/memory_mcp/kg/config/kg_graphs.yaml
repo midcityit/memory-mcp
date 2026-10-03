@@ -1,0 +1,7 @@
+graphs:
+  mcit:
+    name: "Mid City IT"
+    description: "MCIT internal, homelab, chriscastrotech"
+  vtv:
+    name: "Veritiv"
+    description: "Veritiv cloud infra (AWS/Azure/GCP)"

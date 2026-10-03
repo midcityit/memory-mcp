@@ -6,7 +6,7 @@ on:
 
 jobs:
   test:
-    runs-on: [self-hosted, linux, homelab]
+    runs-on: [self-hosted, Linux, homelab]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

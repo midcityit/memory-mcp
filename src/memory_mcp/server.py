@@ -22,7 +22,12 @@ def create_app() -> FastAPI:
         setup_telemetry(cfg.otlp_endpoint)
 
     store = MemoryStore(qdrant_url=cfg.qdrant_url, stale_days=cfg.stale_days)
-    mcp_tools._init(store)
+    kg = None
+    if cfg.kg_enabled:
+        from memory_mcp.kg import build_kg
+        kg = build_kg(store.client, store.embedder, memory_store=store, config_dir=cfg.kg_config_dir,
+                      dup_threshold=cfg.kg_dup_threshold, max_chars=cfg.kg_max_chars)
+    mcp_tools._init(store, kg)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -54,6 +59,10 @@ def create_app() -> FastAPI:
     ):
         if credentials is None or credentials.credentials != cfg.api_token:
             raise HTTPException(status_code=401, detail="Invalid or missing token")
+
+    if kg is not None:
+        from memory_mcp.kg.rest import build_router
+        app.include_router(build_router(kg.service, kg.query, require_token))
 
     @app.get("/health")
     def health():
