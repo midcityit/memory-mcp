@@ -18,7 +18,7 @@
 - The existing 4 memory MCP tools and `/memories` REST routes must not change signature or output.
 - Embedding model `all-MiniLM-L6-v2`, 384-d, cosine; loaded **once per worker** (shared by MemoryStore and the graph).
 - Graph IDs match `^[a-z][a-z0-9_]{1,31}$`. Entity key = `{provider}:{native_id}`; fully qualified key = `{graph}::{key}`.
-- Providers: `azure`, `aws`, `gcp`, `vmware`, `hyperv`, `cloudflare`, `kubernetes`, `logical`.
+- Providers: `azure`, `aws`, `gcp`, `vmware`, `hyperv`, `cloudflare`, `kubernetes`, `grafana`, `prometheus`, `netbox`, `logical` (observability/NetBox amendment, spec §1 and §2.4).
 - Collections: `kg_<graph>_entities`, `kg_<graph>_edges`, shared `kg_xrefs`.
 - Point IDs: entity `uuid5(KG_NAMESPACE, key)`; edge `uuid5(KG_NAMESPACE, f"{src}|{relation}|{dst}|{valid_from}")`; xref `uuid5(KG_NAMESPACE, f"{src}|{relation}|{dst}")`.
 - Current at `t` ⇔ `valid_from_ts ≤ t` and (`valid_to_ts` is null or `valid_to_ts > t`). Default `t` = now.
@@ -38,7 +38,8 @@ These are small clarifications found while planning. Task 10 updates the spec te
    - **#3:** `kg_traverse(mcit, <tunnel>, direction=out, max_depth=1, as_of=2026-09-20)` includes the ms01 memory-mcp Service and not the Envoy Gateway; without `as_of` it is the reverse.
    - **#4:** `kg_impact(mcit, <ms01 Qdrant PV>)` contains only ms01-k8s entities: never the mcit-k8s Deployment or the public hostname. This is the MCIT-251 decommission evidence.
 6. **No separate `GraphStore` Protocol class.** The "interface" from spec §6 is the public method set of `QdrantGraphStore`; `KGService` and `KGQuery` depend only on those methods. A `typing.Protocol` gets extracted when a second backend actually appears (YAGNI).
-7. **RCL-31 spike result (verified 2026-10-03, qdrant-client local mode):** vectorless collections (`vectors_config={}`), `MatchAny` (including array payloads), `IsNullCondition`, float `Range`, nested `should` filters, and filtered `query_points` all work in `QdrantClient(":memory:")`. Payload indexes are no-ops locally (expected). Store tests therefore use local mode. Task 10 re-verifies vectorless collections against the server (Qdrant v1.13.6) on dev.
+7. **Observability and NetBox (approved 2026-10-03, already in the spec):** providers `grafana`, `prometheus`, `netbox`; kind `inventory`; relations `monitors`, `sends_metrics_to`, `sends_traces_to`, `queries`, `reads_from`, `notifies`, `served_by`, `visualizes`, `recorded_in`; acceptance check #9. Implemented in Tasks 2, 3, 4 and 10.
+8. **RCL-31 spike result (verified 2026-10-03, qdrant-client local mode):** vectorless collections (`vectors_config={}`), `MatchAny` (including array payloads), `IsNullCondition`, float `Range`, nested `should` filters, and filtered `query_points` all work in `QdrantClient(":memory:")`. Payload indexes are no-ops locally (expected). Store tests therefore use local mode. Task 10 re-verifies vectorless collections against the server (Qdrant v1.13.6) on dev.
 
 ## Review Focus
 
@@ -74,7 +75,7 @@ The five uncovered inputs most likely to bite a real user. Each one has a pinnin
 | `src/memory_mcp/kg/config/kg_relations.yaml` | create | Relation registry |
 | `src/memory_mcp/kg/catalog/*.json` | create | Type catalogs, 8 providers |
 | `scripts/build_kg_catalog.py` | create | Generates azure/aws/gcp/cloudflare catalogs |
-| `scripts/kg_acceptance.py` | create | Seeds dev and runs the 8 §10 checks over REST |
+| `scripts/kg_acceptance.py` | create | Seeds dev and runs the 9 §10 checks over REST |
 | `scripts/kg_seed/mcit.jsonl`, `scripts/kg_seed/vtv.jsonl` | create | Acceptance topology |
 | `tests/kg/conftest.py` | create | `StubEmbedder`, local-Qdrant fixtures, a small registry |
 | `tests/kg/test_*.py` | create | One test module per kg module |
@@ -541,6 +542,15 @@ relations:
   managed_by:       {inverse: manages}
   tracked_in:       {inverse: tracks,          dst_kinds: [work]}
   documented_in:    {inverse: documents,       dst_kinds: [work]}
+  monitors:         {inverse: monitored_by}
+  sends_metrics_to: {inverse: receives_metrics_from}
+  sends_traces_to:  {inverse: receives_traces_from}
+  queries:          {inverse: queried_by,      impact: propagates}
+  reads_from:       {inverse: read_by,         impact: propagates}
+  notifies:         {inverse: notified_by,     impact: propagates}
+  served_by:        {inverse: serves,          impact: propagates}
+  visualizes:       {inverse: visualized_by}
+  recorded_in:      {inverse: records,         dst_kinds: [inventory]}
   pattern_from:           {inverse: pattern_for,           class: reference}
   lessons_from:           {inverse: lessons_for,           class: reference}
   similar_to:             {inverse: similar_to,            class: reference}
@@ -585,8 +595,9 @@ def test_relations_loaded_with_defaults(reg):
 
 def test_propagating_relations(reg):
     p = set(reg.propagating_relations())
-    assert {"runs_on", "hosted_on", "depends_on", "exposed_via", "resolves_to"} <= p
-    assert "member_of" not in p and "tracked_in" not in p
+    assert {"runs_on", "hosted_on", "depends_on", "exposed_via", "resolves_to",
+            "queries", "reads_from", "notifies", "served_by"} <= p
+    assert not {"member_of", "tracked_in", "monitors", "visualizes", "recorded_in", "sends_metrics_to"} & p
 
 
 def test_unknown_relation_and_provider(reg):
@@ -596,7 +607,7 @@ def test_unknown_relation_and_provider(reg):
     with pytest.raises(KGError) as e:
         reg.require_provider("azrue")
     assert e.value.code == "unknown_provider" and "azure" in e.value.suggestions
-    assert "cloudflare" in PROVIDERS
+    assert {"cloudflare", "grafana", "prometheus", "netbox"} <= set(PROVIDERS)
 
 
 def test_bad_graph_id_in_config_rejected(tmp_path):
@@ -627,7 +638,8 @@ import yaml
 
 from memory_mcp.kg.models import KGError
 
-PROVIDERS = ("azure", "aws", "gcp", "vmware", "hyperv", "cloudflare", "kubernetes", "logical")
+PROVIDERS = ("azure", "aws", "gcp", "vmware", "hyperv", "cloudflare", "kubernetes", "grafana", "prometheus",
+             "netbox", "logical")
 GRAPH_ID_RE = re.compile(r"^[a-z][a-z0-9_]{1,31}$")
 _PKG = Path(__file__).parent
 
@@ -740,7 +752,7 @@ git commit -m "feat(kg): models and graph/relation registry (RCL-33)"
 
 **Files:**
 - Create: `scripts/build_kg_catalog.py`, `scripts/kg_tf_aliases.yaml`, `scripts/kg_sources/README.md`
-- Create (curated): `src/memory_mcp/kg/catalog/vmware.json`, `hyperv.json`, `kubernetes.json`, `logical.json`
+- Create (curated): `src/memory_mcp/kg/catalog/vmware.json`, `hyperv.json`, `kubernetes.json`, `grafana.json`, `prometheus.json`, `netbox.json`, `logical.json`
 - Create (generated in Step 8): `src/memory_mcp/kg/catalog/azure.json`, `aws.json`, `gcp.json`, `cloudflare.json`
 - Modify: `src/memory_mcp/kg/registry.py` (add `KINDS`)
 - Test: `tests/kg/test_catalog.py`
@@ -765,7 +777,7 @@ In `src/memory_mcp/kg/registry.py`, below `PROVIDERS`:
 ```python
 KINDS = ("compute", "container", "network", "dns", "edge", "database", "storage", "identity",
          "security", "secret", "observability", "messaging", "analytics", "ai", "integration",
-         "org", "host", "work", "other")
+         "org", "host", "work", "inventory", "other")
 ```
 
 - [ ] **Step 2: Write the curated catalogs**
@@ -825,6 +837,49 @@ KINDS = ("compute", "container", "network", "dns", "edge", "database", "storage"
   {"type": "gateway.networking.k8s.io/Gateway", "kind": "network", "aliases": []},
   {"type": "gateway.networking.k8s.io/HTTPRoute", "kind": "network", "aliases": []},
   {"type": "storage.k8s.io/StorageClass", "kind": "storage", "aliases": ["kubernetes_storage_class", "kubernetes_storage_class_v1"]}
+]}
+```
+
+`src/memory_mcp/kg/catalog/grafana.json` (works the same for self-hosted, Azure Managed Grafana and AWS Managed Grafana; `Instance` is linked to its host with `served_by`):
+```json
+{"provider": "grafana", "types": [
+  {"type": "Instance", "kind": "observability", "aliases": []},
+  {"type": "Folder", "kind": "observability", "aliases": ["grafana_folder"]},
+  {"type": "Dashboard", "kind": "observability", "aliases": ["grafana_dashboard"]},
+  {"type": "Datasource", "kind": "observability", "aliases": ["grafana_data_source"]},
+  {"type": "AlertRule", "kind": "observability", "aliases": ["grafana_rule_group"]},
+  {"type": "ContactPoint", "kind": "observability", "aliases": ["grafana_contact_point"]},
+  {"type": "NotificationPolicy", "kind": "observability", "aliases": ["grafana_notification_policy"]}
+]}
+```
+
+`src/memory_mcp/kg/catalog/prometheus.json` (aliases are the Prometheus-operator CRD kinds):
+```json
+{"provider": "prometheus", "types": [
+  {"type": "Server", "kind": "observability", "aliases": ["Prometheus"]},
+  {"type": "ScrapeJob", "kind": "observability", "aliases": ["ServiceMonitor", "PodMonitor", "ScrapeConfig"]},
+  {"type": "RuleGroup", "kind": "observability", "aliases": ["PrometheusRule"]},
+  {"type": "Alertmanager", "kind": "observability", "aliases": []},
+  {"type": "Receiver", "kind": "observability", "aliases": ["AlertmanagerConfig"]},
+  {"type": "RemoteWrite", "kind": "observability", "aliases": []}
+]}
+```
+
+`src/memory_mcp/kg/catalog/netbox.json` (NetBox records are kind `inventory`: the record, not the device; aliases from the `e-breuninger/netbox` Terraform provider):
+```json
+{"provider": "netbox", "types": [
+  {"type": "dcim.site", "kind": "inventory", "aliases": ["netbox_site"]},
+  {"type": "dcim.rack", "kind": "inventory", "aliases": ["netbox_rack"]},
+  {"type": "dcim.device", "kind": "inventory", "aliases": ["netbox_device"]},
+  {"type": "dcim.interface", "kind": "inventory", "aliases": ["netbox_device_interface"]},
+  {"type": "ipam.prefix", "kind": "inventory", "aliases": ["netbox_prefix"]},
+  {"type": "ipam.ipaddress", "kind": "inventory", "aliases": ["netbox_ip_address"]},
+  {"type": "ipam.vlan", "kind": "inventory", "aliases": ["netbox_vlan"]},
+  {"type": "ipam.vrf", "kind": "inventory", "aliases": ["netbox_vrf"]},
+  {"type": "virtualization.cluster", "kind": "inventory", "aliases": ["netbox_cluster"]},
+  {"type": "virtualization.virtualmachine", "kind": "inventory", "aliases": ["netbox_virtual_machine"]},
+  {"type": "tenancy.tenant", "kind": "inventory", "aliases": ["netbox_tenant"]},
+  {"type": "circuits.circuit", "kind": "inventory", "aliases": ["netbox_circuit"]}
 ]}
 ```
 
@@ -945,6 +1000,12 @@ _spec.loader.exec_module(bkc)
     ("aws", "AWS::EC2::Instance", "compute"),
     ("aws", "AWS::RDS::DBInstance", "database"),
     ("aws", "AWS::Route53::HostedZone", "dns"),
+    ("aws", "AWS::APS::Workspace", "observability"),
+    ("aws", "AWS::Grafana::Workspace", "observability"),
+    ("aws", "AWS::CloudWatch::Alarm", "observability"),
+    ("azure", "Microsoft.Monitor/accounts", "observability"),
+    ("azure", "Microsoft.Dashboard/grafana", "observability"),
+    ("azure", "Microsoft.AlertsManagement/prometheusRuleGroups", "observability"),
     ("gcp", "compute.googleapis.com/Firewall", "security"),
     ("gcp", "compute.googleapis.com/Instance", "compute"),
     ("gcp", "container.googleapis.com/Cluster", "container"),
@@ -991,6 +1052,7 @@ def test_committed_catalogs_are_valid():
             assert t["kind"] in KINDS, (f, t)
     reg = Registry.load()
     assert "core/Deployment" not in reg.types["kubernetes"] and "apps/Deployment" in reg.types["kubernetes"]
+    assert reg.types["netbox"]["dcim.device"].kind == "inventory" and reg.types["grafana"]["Dashboard"].kind == "observability"
 ```
 
 - [ ] **Step 5: Run to verify failure**
@@ -1058,7 +1120,7 @@ RULES: dict[str, list[tuple[str, str]]] = {
         (r"^AWS::(S3|EFS|FSx|Backup|StorageGateway)::", "storage"),
         (r"^AWS::(SecretsManager|KMS|SSM::Parameter|ACMPCA)", "secret"),
         (r"^AWS::(IAM|SSO|Cognito|IdentityStore)::", "identity"),
-        (r"^AWS::(CloudWatch|Logs|CloudTrail|XRay|Oam)::", "observability"),
+        (r"^AWS::(CloudWatch|Logs|CloudTrail|XRay|Oam|APS|Grafana|ApplicationInsights|InternetMonitor|Synthetics)::", "observability"),
         (r"^AWS::(SQS|SNS|Events|Kinesis|MSK|AmazonMQ|Pipes)::", "messaging"),
         (r"^AWS::(Glue|Athena|Redshift|EMR|LakeFormation|QuickSight)::", "analytics"),
         (r"^AWS::(SageMaker|Bedrock|Comprehend|Rekognition)::", "ai"),
@@ -1191,7 +1253,7 @@ Expected: one summary line per provider (`<provider>: N types, M unmapped`). Rev
 - [ ] **Step 9: Run the full kg suite and check the catalog size**
 
 Run: `pytest tests/kg -v && du -sh src/memory_mcp/kg/catalog`
-Expected: all pass, `test_committed_catalogs_are_valid` covering 8 files; total catalog size under 2 MB.
+Expected: all pass, `test_committed_catalogs_are_valid` covering 11 files; total catalog size under 2 MB.
 
 - [ ] **Step 10: Commit**
 
@@ -1325,6 +1387,9 @@ DEPLOY = TypeDef("kubernetes", "apps/Deployment", "container")
 CF_DNS = TypeDef("cloudflare", "dns_record", "dns")
 HV_VM = TypeDef("hyperv", "VM", "compute")
 VS_VM = TypeDef("vmware", "VirtualMachine", "compute")
+GF_DASH = TypeDef("grafana", "Dashboard", "observability")
+PROM_JOB = TypeDef("prometheus", "ScrapeJob", "observability")
+NB_DEV = TypeDef("netbox", "dcim.device", "inventory")
 JIRA = TypeDef("logical", "jira_issue", "work")
 REPO = TypeDef("logical", "repo", "work")
 SUB = "/subscriptions/00000000-0000-0000-0000-000000000001"
@@ -1393,6 +1458,23 @@ def test_cloudflare_hyperv_vmware():
     with pytest.raises(KGError):
         normalize_native_id("hyperv", HV_VM, "ms01.int.example.net/VMSwitch/ext")
     assert normalize_native_id("vmware", VS_VM, "VC01.corp.local/DC1/vm/web01") == "vc01.corp.local/DC1/vm/web01"
+
+
+def test_grafana_prometheus_netbox():
+    assert normalize_native_id("grafana", GF_DASH, "Grafana.ChrisCastroTech.com/Dashboard/memory-mcp-overview") == \
+        "grafana.chriscastrotech.com/Dashboard/memory-mcp-overview"
+    with pytest.raises(KGError) as e:
+        normalize_native_id("grafana", GF_DASH, "grafana.chriscastrotech.com/Datasource/amw")
+    assert e.value.code == "type_id_mismatch"
+    assert normalize_native_id("prometheus", PROM_JOB, "prometheus.monitoring.svc/ScrapeJob/memory-mcp") == \
+        "prometheus.monitoring.svc/ScrapeJob/memory-mcp"
+    assert normalize_native_id("netbox", NB_DEV, "NetBox.example.net/dcim.device/42") == "netbox.example.net/dcim.device/42"
+    with pytest.raises(KGError) as e:
+        normalize_native_id("netbox", NB_DEV, "netbox.example.net/dcim.device/web01")
+    assert e.value.code == "invalid_native_id"
+    with pytest.raises(KGError) as e:
+        normalize_native_id("netbox", NB_DEV, "netbox.example.net/ipam.prefix/7")
+    assert e.value.code == "type_id_mismatch"
 
 
 def test_logical():
@@ -1519,6 +1601,13 @@ def _kubernetes(td: TypeDef, nid: str) -> str:
     return nid
 
 
+def _netbox(td: TypeDef, nid: str) -> str:
+    out = _hostpath("netbox", td, nid, check_segment=True)
+    if not out.split("/", 2)[2].isdigit():
+        raise _invalid("netbox", nid, "{netbox_host}/{app.model}/{numeric id}")
+    return out
+
+
 def _logical(td: TypeDef, nid: str) -> str:
     if not _LOGICAL.get(td.type, _LOGICAL_DEFAULT).match(nid):
         raise _invalid("logical", nid, f"the {td.type} format")
@@ -1543,6 +1632,10 @@ def normalize_native_id(provider: str, td: TypeDef, native_id: str) -> str:
         return _cloudflare(td, nid)
     if provider == "kubernetes":
         return _kubernetes(td, nid)
+    if provider in ("grafana", "prometheus"):
+        return _hostpath(provider, td, nid, check_segment=True)
+    if provider == "netbox":
+        return _netbox(td, nid)
     return _logical(td, nid)
 ```
 
@@ -3721,6 +3814,11 @@ git commit -m "feat(kg): /kg REST routes with NDJSON export/import (RCL-37)"
 | `VTV_AKS_ID` | In the Veritiv tenant: `az aks list --query "[?name=='aks-vtv-prod'].id" -o tsv` |
 | `MCIT_GATEWAY_NS`, `MCIT_GATEWAY_NAME` | `kubectl --context mcit-k8s get gateway -A` (the gateway the memory-mcp HTTPRoute attaches to) |
 | `MS01_QDRANT_PV` | `kubectl --context ms01-k8s get pv` (the hostPath `/data/qdrant` PV) |
+| `MCIT_AMW_ID` | `az resource list --name amw-mcit --resource-type Microsoft.Monitor/accounts --query "[0].id" -o tsv` |
+| `MCIT_OTEL_DEPLOYMENT` | `kubectl --context mcit-k8s get deploy -n monitoring` (the otel-collector Deployment name) |
+| `GRAFANA_HOST` | the Grafana instance host, e.g. `grafana.chriscastrotech.com` |
+| `GRAFANA_AMW_DS_UID` | `curl -s -H "Authorization: Bearer $GRAFANA_TOKEN" https://$GRAFANA_HOST/api/datasources \| jq -r '.[] \| select(.type=="prometheus") \| "\(.uid) \(.name)"'` → the datasource pointing at `amw-mcit` |
+| `GRAFANA_DASHBOARD_UID` | the uid from the memory-mcp Overview dashboard URL (`/d/<uid>/...`) |
 | `KG_BASE_URL` | dev endpoint for digital-twin-dev (e.g. its HTTPRoute hostname) |
 | `MEMORY_TWIN_BEARER` | dev API token, fetched at run time from `<cctech-keyvault:memory-mcp-api-token>` (dev instance secret); never echoed |
 
@@ -3750,6 +3848,11 @@ git commit -m "feat(kg): /kg REST routes with NDJSON export/import (RCL-37)"
 {"record": "entity", "provider": "kubernetes", "type": "core/Service", "native_id": "ms01-k8s/digital-twin/core/Service/memory-mcp", "display_name": "memory-mcp service (ms01)"}
 {"record": "entity", "provider": "kubernetes", "type": "apps/StatefulSet", "native_id": "ms01-k8s/digital-twin/apps/StatefulSet/qdrant", "display_name": "qdrant (ms01 warm rollback)"}
 {"record": "entity", "provider": "kubernetes", "type": "core/PersistentVolume", "native_id": "ms01-k8s/_cluster/core/PersistentVolume/${MS01_QDRANT_PV}", "display_name": "ms01 qdrant PV /data/qdrant", "properties": {"hostPath": "/data/qdrant"}}
+{"record": "entity", "provider": "azure", "type": "Microsoft.Monitor/accounts", "native_id": "${MCIT_AMW_ID}", "display_name": "amw-mcit (Azure Monitor workspace)"}
+{"record": "entity", "provider": "kubernetes", "type": "apps/Deployment", "native_id": "mcit-k8s/monitoring/apps/Deployment/${MCIT_OTEL_DEPLOYMENT}", "display_name": "otel-collector"}
+{"record": "entity", "provider": "grafana", "type": "Instance", "native_id": "${GRAFANA_HOST}/Instance/${GRAFANA_HOST}", "display_name": "Grafana (${GRAFANA_HOST})"}
+{"record": "entity", "provider": "grafana", "type": "Datasource", "native_id": "${GRAFANA_HOST}/Datasource/${GRAFANA_AMW_DS_UID}", "display_name": "amw-mcit datasource"}
+{"record": "entity", "provider": "grafana", "type": "Dashboard", "native_id": "${GRAFANA_HOST}/Dashboard/${GRAFANA_DASHBOARD_UID}", "display_name": "memory-mcp Overview"}
 {"record": "edge", "src": "cloudflare:${CF_ACCOUNT_ID_LC}/chriscastrotech.com/dns_record/memory-mcp", "relation": "resolves_to", "dst": "cloudflare:${CF_ACCOUNT_ID_LC}/-/zero_trust_tunnel_cloudflared/homelab"}
 {"record": "edge", "src": "cloudflare:${CF_ACCOUNT_ID_LC}/-/zero_trust_tunnel_cloudflared/homelab", "relation": "routes_to", "dst": "kubernetes:mcit-k8s/${MCIT_GATEWAY_NS}/gateway.networking.k8s.io/Gateway/${MCIT_GATEWAY_NAME}", "valid_from": "2026-09-27T07:00:00+00:00", "evidence_memory_ids": ["d73c22c3-9a7d-4fe2-a5b8-5668341cc9d3"]}
 {"record": "edge", "src": "cloudflare:${CF_ACCOUNT_ID_LC}/-/zero_trust_tunnel_cloudflared/homelab", "relation": "routes_to", "dst": "kubernetes:ms01-k8s/digital-twin/core/Service/memory-mcp", "valid_from": "2026-04-30T00:00:00+00:00", "valid_to": "2026-09-27T07:00:00+00:00", "retire_reason": "MCIT-193 cutover to mcit-k8s"}
@@ -3772,6 +3875,14 @@ git commit -m "feat(kg): /kg REST routes with NDJSON export/import (RCL-37)"
 {"record": "edge", "src": "kubernetes:ms01-k8s/digital-twin/apps/Deployment/memory-mcp", "relation": "depends_on", "dst": "kubernetes:ms01-k8s/digital-twin/apps/StatefulSet/qdrant"}
 {"record": "edge", "src": "kubernetes:ms01-k8s/digital-twin/apps/StatefulSet/qdrant", "relation": "depends_on", "dst": "kubernetes:ms01-k8s/_cluster/core/PersistentVolume/${MS01_QDRANT_PV}"}
 {"record": "edge", "src": "kubernetes:ms01-k8s/_cluster/core/PersistentVolume/${MS01_QDRANT_PV}", "relation": "tracked_in", "dst": "logical:MCIT-251"}
+{"record": "edge", "src": "kubernetes:mcit-k8s/digital-twin/apps/Deployment/memory-mcp", "relation": "sends_metrics_to", "dst": "kubernetes:mcit-k8s/monitoring/apps/Deployment/${MCIT_OTEL_DEPLOYMENT}"}
+{"record": "edge", "src": "kubernetes:mcit-k8s/digital-twin/apps/Deployment/memory-mcp", "relation": "sends_traces_to", "dst": "kubernetes:mcit-k8s/monitoring/apps/Deployment/${MCIT_OTEL_DEPLOYMENT}"}
+{"record": "edge", "src": "kubernetes:mcit-k8s/monitoring/apps/Deployment/${MCIT_OTEL_DEPLOYMENT}", "relation": "sends_metrics_to", "dst": "azure:${MCIT_AMW_ID_LC}"}
+{"record": "edge", "src": "grafana:${GRAFANA_HOST_LC}/Datasource/${GRAFANA_AMW_DS_UID}", "relation": "reads_from", "dst": "azure:${MCIT_AMW_ID_LC}"}
+{"record": "edge", "src": "grafana:${GRAFANA_HOST_LC}/Dashboard/${GRAFANA_DASHBOARD_UID}", "relation": "queries", "dst": "grafana:${GRAFANA_HOST_LC}/Datasource/${GRAFANA_AMW_DS_UID}"}
+{"record": "edge", "src": "grafana:${GRAFANA_HOST_LC}/Dashboard/${GRAFANA_DASHBOARD_UID}", "relation": "visualizes", "dst": "kubernetes:mcit-k8s/digital-twin/apps/Deployment/memory-mcp"}
+{"record": "edge", "src": "grafana:${GRAFANA_HOST_LC}/Instance/${GRAFANA_HOST}", "relation": "contains", "dst": "grafana:${GRAFANA_HOST_LC}/Dashboard/${GRAFANA_DASHBOARD_UID}"}
+{"record": "edge", "src": "grafana:${GRAFANA_HOST_LC}/Instance/${GRAFANA_HOST}", "relation": "contains", "dst": "grafana:${GRAFANA_HOST_LC}/Datasource/${GRAFANA_AMW_DS_UID}"}
 ```
 `*_LC` variables are the lowercased forms, because Azure and Cloudflare keys are normalized to lowercase. The script derives them; you never set them yourself.
 
@@ -3814,6 +3925,11 @@ ENV = {
     "MCIT_GATEWAY_NS": "envoy-gateway-system",
     "MCIT_GATEWAY_NAME": "eg",
     "MS01_QDRANT_PV": "qdrant-data",
+    "MCIT_AMW_ID": "/subscriptions/00000000-0000-0000-0000-00000000000a/resourceGroups/rg-mon/providers/Microsoft.Monitor/accounts/amw-mcit",
+    "MCIT_OTEL_DEPLOYMENT": "otel-collector",
+    "GRAFANA_HOST": "Grafana.ChrisCastroTech.com",
+    "GRAFANA_AMW_DS_UID": "amw-mcit-prom",
+    "GRAFANA_DASHBOARD_UID": "memory-mcp-overview",
 }
 
 
@@ -3824,7 +3940,8 @@ def test_render_seed_lowercases_derived_vars():
 
 
 def test_full_acceptance_in_process(svc, kg_registry, gstore):
-    for t, kind in [("Microsoft.Insights/components", "observability"), ("Microsoft.KeyVault/vaults", "secret")]:
+    for t, kind in [("Microsoft.Insights/components", "observability"), ("Microsoft.KeyVault/vaults", "secret"),
+                    ("Microsoft.Monitor/accounts", "observability")]:
         kg_registry.types["azure"][t] = TypeDef("azure", t, kind)
     kg_registry.types["kubernetes"]["core/PersistentVolume"] = TypeDef("kubernetes", "core/PersistentVolume", "storage")
     kg_registry._build_type_index()
@@ -3833,7 +3950,7 @@ def test_full_acceptance_in_process(svc, kg_registry, gstore):
     results = acc.run(TestClient(app), ENV, check_latency=False)
     failed = [r for r in results if not r[1]]
     assert not failed, failed
-    assert len(results) == 8
+    assert len(results) == 9
 ```
 
 Run: `pytest tests/kg/test_acceptance_script.py -v` and expect FAIL (script missing).
@@ -3842,10 +3959,9 @@ Run: `pytest tests/kg/test_acceptance_script.py -v` and expect FAIL (script miss
 
 ```python
 #!/usr/bin/env python3
-"""Seed the mcit/vtv acceptance topology over REST and run the 8 spec §10 checks.
+"""Seed the mcit/vtv acceptance topology over REST and run the 9 spec §10 checks.
 
-Env: KG_BASE_URL, MEMORY_TWIN_BEARER, plus the seed variables in the plan (CF_ACCOUNT_ID, MCIT_APPI_ID,
-CCTECH_KV_ID, VTV_AKS_ID, MCIT_GATEWAY_NS, MCIT_GATEWAY_NAME, MS01_QDRANT_PV). Exit 0 iff all checks pass.
+Env: KG_BASE_URL, MEMORY_TWIN_BEARER, plus the seed variables listed in REQUIRED. Exit 0 iff all checks pass.
 """
 from __future__ import annotations
 
@@ -3863,7 +3979,8 @@ import httpx
 
 SEED_DIR = Path(__file__).resolve().parent / "kg_seed"
 REQUIRED = ("CF_ACCOUNT_ID", "MCIT_APPI_ID", "CCTECH_KV_ID", "VTV_AKS_ID", "MCIT_GATEWAY_NS",
-            "MCIT_GATEWAY_NAME", "MS01_QDRANT_PV")
+            "MCIT_GATEWAY_NAME", "MS01_QDRANT_PV", "MCIT_AMW_ID", "MCIT_OTEL_DEPLOYMENT", "GRAFANA_HOST",
+            "GRAFANA_AMW_DS_UID", "GRAFANA_DASHBOARD_UID")
 
 
 def _vars(env: Mapping[str, str]) -> dict[str, str]:
@@ -3872,8 +3989,9 @@ def _vars(env: Mapping[str, str]) -> dict[str, str]:
         raise SystemExit(f"missing env: {', '.join(missing)}")
     v = {k: env[k] for k in REQUIRED}
     v["CF_ACCOUNT_ID_LC"] = env["CF_ACCOUNT_ID"].lower()
-    for k in ("MCIT_APPI_ID", "CCTECH_KV_ID", "VTV_AKS_ID"):
+    for k in ("MCIT_APPI_ID", "CCTECH_KV_ID", "VTV_AKS_ID", "MCIT_AMW_ID"):
         v[f"{k}_LC"] = env[k].lower().rstrip("/")
+    v["GRAFANA_HOST_LC"] = env["GRAFANA_HOST"].lower()
     return v
 
 
@@ -3896,6 +4014,9 @@ def run(client: httpx.Client, env: Mapping[str, str], check_latency: bool = True
     MS01SVC = "kubernetes:ms01-k8s/digital-twin/core/Service/memory-mcp"
     PV = f"kubernetes:ms01-k8s/_cluster/core/PersistentVolume/{v['MS01_QDRANT_PV']}"
     AKS = f"azure:{v['VTV_AKS_ID_LC']}"
+    AMW = f"azure:{v['MCIT_AMW_ID_LC']}"
+    DS = f"grafana:{v['GRAFANA_HOST_LC']}/Datasource/{v['GRAFANA_AMW_DS_UID']}"
+    DASH = f"grafana:{v['GRAFANA_HOST_LC']}/Dashboard/{v['GRAFANA_DASHBOARD_UID']}"
     out: list[tuple[str, bool, str]] = []
 
     def check(name, fn):
@@ -3980,6 +4101,12 @@ def run(client: httpx.Client, env: Mapping[str, str], check_latency: bool = True
         p95 = statistics.quantiles(samples, n=20)[18]
         return p95 < 150, f"p95={p95:.1f}ms (RSS: check `kubectl top pod` separately)"
     check("8 traverse depth-3 p95 < 150 ms", c8)
+
+    def c9():
+        r = client.post("/kg/mcit/impact", json={"key": AMW}).json()
+        depth = {n["key"]: layer["depth"] for layer in r["affected"] for n in layer["nodes"]}
+        return depth.get(DS) == 1 and depth.get(DASH) == 2, f"affected={len(depth)}"
+    check("9 impact(amw-mcit) reaches Grafana datasource and dashboard", c9)
     return out
 
 
@@ -4044,8 +4171,9 @@ export KG_BASE_URL="https://$(kubectl --context mcit-k8s get httproute -n digita
 # then (value is never printed):
 export MEMORY_TWIN_BEARER="$(az keyvault secret show --vault-name cctech-keyvault --name "$DEV_TOKEN_SECRET_NAME" --query value -o tsv)"
 export CF_ACCOUNT_ID=... MCIT_APPI_ID=... CCTECH_KV_ID=... VTV_AKS_ID=... MCIT_GATEWAY_NS=... MCIT_GATEWAY_NAME=... MS01_QDRANT_PV=...
+export MCIT_AMW_ID=... MCIT_OTEL_DEPLOYMENT=... GRAFANA_HOST=... GRAFANA_AMW_DS_UID=... GRAFANA_DASHBOARD_UID=...
 python scripts/kg_acceptance.py | tee /tmp/kg_acceptance_dev.txt
 kubectl --context mcit-k8s top pod -n digital-twin-dev
 ```
-Expected: 8 `PASS` lines; memory-mcp RSS at least 25% below the 2Gi limit. Post the output (no secrets) and the `kubectl top` line as a checkpoint comment on RCL-38. Transition RCL-31…RCL-38 and RCL-41 to Done, and update the memory-twin project memory `memory-mcp-knowledge-graph` (source_repo `memory-mcp`) with the result.
+Expected: 9 `PASS` lines; memory-mcp RSS at least 25% below the 2Gi limit. Post the output (no secrets) and the `kubectl top` line as a checkpoint comment on RCL-38. Transition RCL-31…RCL-38 and RCL-41 to Done, and update the memory-twin project memory `memory-mcp-knowledge-graph` (source_repo `memory-mcp`) with the result.
 

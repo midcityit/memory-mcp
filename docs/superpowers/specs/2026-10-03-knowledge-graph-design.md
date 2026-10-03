@@ -38,6 +38,7 @@ The acceptance scenario in §10 is the definition of done.
 | History | **Soft-retire**: `valid_from` / `valid_to` on edges and entities; queries default to now and support `as_of` |
 | Storage | **Qdrant-native** collections behind a `GraphStore` interface (no new infrastructure) |
 | Type coverage | **Every resource type** for Azure, AWS, GCP, VMware, Hyper-V and Cloudflare, plus Kubernetes and logical types, using provider-native types from generated catalogs |
+| Observability & inventory (amended 2026-10-03) | **Grafana, Prometheus and NetBox are first-class providers**, keyed by their own native IDs; self-hosted and managed (Azure/AWS) instances use the same model. Managed services (CloudWatch, Azure Monitor/Managed Grafana/Prometheus, AWS Managed Prometheus/Grafana) come from the cloud catalogs as `observability`. NetBox sync stays out of v1 |
 | Multiple graphs | **Independent graphs** (`vtv`, `mcit`, …), physically isolated, queryable together, linked only by reference-class cross-graph links |
 | Access control | **Organizational boundary only in v1**: one API token, as today |
 | OpenTrace (opentrace/opentrace) | Evaluated and **rejected**: it is a read-only, per-repo code graph with no infra ontology and no shared write path |
@@ -65,7 +66,7 @@ Graph IDs must match `^[a-z][a-z0-9_]{1,31}$`.
 | Field | Type | Notes |
 |---|---|---|
 | `key` | str | `{provider}:{native_id}`, unique within the graph. The point ID is `uuid5(NAMESPACE, key)` |
-| `provider` | str | `azure`, `aws`, `gcp`, `vmware`, `hyperv`, `cloudflare`, `kubernetes`, `logical` |
+| `provider` | str | `azure`, `aws`, `gcp`, `vmware`, `hyperv`, `cloudflare`, `kubernetes`, `grafana`, `prometheus`, `netbox`, `logical` |
 | `type` | str | Provider-native type, as resolved from the catalog (§3) |
 | `kind` | str | Cross-cloud category, **derived** from the type and never supplied by agents |
 | `native_id` | str | Normalized native identifier (§2.4) |
@@ -81,7 +82,7 @@ Graph IDs must match `^[a-z][a-z0-9_]{1,31}$`.
 
 Payload indexes: `key`, `provider`, `kind`, `type`, `memory_ids`, `valid_to`.
 
-**Kinds:** `compute`, `container`, `network`, `dns`, `edge`, `database`, `storage`, `identity`, `security`, `secret`, `observability`, `messaging`, `analytics`, `ai`, `integration`, `org`, `host`, `work` (Jira, Confluence, repos, pipelines), `other`.
+**Kinds:** `compute`, `container`, `network`, `dns`, `edge`, `database`, `storage`, `identity`, `security`, `secret`, `observability`, `messaging`, `analytics`, `ai`, `integration`, `org`, `host`, `work` (Jira, Confluence, repos, pipelines), `inventory` (NetBox records: the record, not the device), `other`.
 
 ### 2.3 Edge (`kg_<g>_edges`)
 
@@ -113,6 +114,9 @@ Each edge is stored once, in its canonical direction. The registry supplies an i
 | hyperv | `{host_or_cluster_fqdn}/{object_type}/{name}` | lowercase FQDN |
 | cloudflare | `{account_id}/{zone or -}/{object_type}/{id_or_name}` | lowercase |
 | kubernetes | `{cluster}/{namespace or _cluster}/{group/kind}/{name}` | as-is |
+| grafana | `{grafana_host}/{type}/{uid}` (`Instance` uses the host as uid) | lowercase host |
+| prometheus | `{prometheus_host}/{type}/{name}` | lowercase host |
+| netbox | `{netbox_host}/{app.model}/{id}` (numeric id) | lowercase host |
 | logical | Per-type convention: Jira key `MCIT-193`, repo `org/repo`, Confluence `space/page_id`, etc. | per-type regex |
 
 `ids.py` validates the format per provider. For Azure, AWS and GCP it also checks that **the type embedded in the ID matches the declared type**, for example rejecting an ARM ID containing `/networkInterfaces/` filed as `Microsoft.Compute/virtualMachines`.
@@ -144,11 +148,14 @@ Agents never type `kind`. The server derives it from a catalog entry.
 | vmware | vSphere managed object types (`VirtualMachine`, `HostSystem`, `ClusterComputeResource`, `Datastore`, `DistributedVirtualPortgroup`, `Datacenter`, `ResourcePool`, `VirtualApp`, `Network`, `Folder`) + NSX (`Segment`, `Tier0Gateway`, `Tier1Gateway`) | curated |
 | hyperv | `Host`, `VM`, `VMSwitch`, `VHD`, `Checkpoint`, `FailoverCluster`, `ClusterSharedVolume` | curated |
 | kubernetes | Core and common group/kinds; CRDs accepted by the pattern `^[a-z0-9.-]+/[A-Z][A-Za-z0-9]+$` | curated + pattern |
+| grafana | `Instance`, `Folder`, `Dashboard`, `Datasource`, `AlertRule`, `ContactPoint`, `NotificationPolicy` (aliases from the `grafana/grafana` Terraform provider) | curated |
+| prometheus | `Server`, `ScrapeJob`, `RuleGroup`, `Alertmanager`, `Receiver`, `RemoteWrite` (aliases from Prometheus-operator CRD kinds) | curated |
+| netbox | `dcim.site`, `dcim.rack`, `dcim.device`, `dcim.interface`, `ipam.prefix`, `ipam.ipaddress`, `ipam.vlan`, `ipam.vrf`, `virtualization.cluster`, `virtualization.virtualmachine`, `tenancy.tenant`, `circuits.circuit` (all kind `inventory`; aliases from the `e-breuninger/netbox` provider) | curated |
 | logical | `workload`, `repo`, `pipeline`, `tf_workspace`, `jira_issue`, `confluence_page`, `person`, `agent`, `site` | curated |
 
 Catalog entry shape: `{"type": "...", "kind": "...", "aliases": ["azurerm_kubernetes_cluster", ...]}`.
 
-- **Kind mapping** for generated catalogs uses an ordered table of prefix and namespace rules kept in the script (e.g. `Microsoft.Network/dnsZones*` → `dns`, `Microsoft.Network/*` → `network`, `AWS::RDS::*` → `database`). Unmatched types become `other`, and the build reports them.
+- **Kind mapping** for generated catalogs uses an ordered table of prefix and namespace rules kept in the script (e.g. `Microsoft.Network/dnsZones*` → `dns`, `Microsoft.Network/*` → `network`, `AWS::RDS::*` → `database`, `AWS::(APS|Grafana|CloudWatch|Logs)::*` → `observability`). Unmatched types become `other`, and the build reports them.
 - **Terraform alias maps** are attached to entries: `azurerm_*`, `aws_*`, `google_*`, `vsphere_*`, `cloudflare_*`, and `hyperv_*` (taliesins provider).
 - A CI workflow can rebuild the catalogs. Committed catalogs are the source of truth at runtime.
 
@@ -190,6 +197,17 @@ Each relation declares `inverse`, `class` (`topology` | `reference`), `impact` (
 | `lessons_from` | `lessons_for` | none | reference class |
 | `similar_to` | `similar_to` | none | reference class, symmetric |
 | `supersedes_approach_of` | `approach_superseded_by` | none | reference class |
+| `monitors` | `monitored_by` | none | scrape job / alarm / alert rule → monitored target |
+| `sends_metrics_to` | `receives_metrics_from` | none | workload/collector → metrics backend (e.g. otel-collector → `amw-mcit`) |
+| `sends_traces_to` | `receives_traces_from` | none | workload/collector → trace backend |
+| `queries` | `queried_by` | propagates | dashboard / alert rule → datasource or workspace |
+| `reads_from` | `read_by` | propagates | Grafana datasource → Prometheus / Azure Monitor workspace / Log Analytics / CloudWatch |
+| `notifies` | `notified_by` | propagates | alert rule → contact point / receiver / action group / SNS topic |
+| `served_by` | `serves` | propagates | Grafana/Prometheus `Instance`/`Server` → its k8s workload or managed cloud resource |
+| `visualizes` | `visualized_by` | none | dashboard → the entities it charts |
+| `recorded_in` | `records` | none | any resource → its NetBox record (`dst_kinds: [inventory]`) |
+
+**Observability queries enabled by these relations** (no new tools): `kg_impact(<metrics workspace>)` lists the datasources, dashboards and alert rules that go blind; `kg_find(kind=..., missing_relation="monitors", direction="in")` lists unmonitored entities (observability gaps); `kg_get_entity(<resource>)` shows its monitors, dashboards and NetBox record.
 
 `impact: propagates` means that if the **dst** fails, the **src** is affected. `kg_impact` walks these relations in reverse.
 
@@ -361,7 +379,7 @@ Seed the **`mcit`** graph with memory-twin's own topology:
 
 Seed the **`vtv`** graph with a thin slice: `aks-vtv-prod` and the customer-solutions-tools workload (VTV-238). Add the xref `vtv::logical:VTV-238 —pattern_from→ mcit::logical:MCIT-184` (Key Vault CSI pattern).
 
-All of the following must hold:
+All of the following must hold (seed also includes the monitoring path memory-mcp → otel-collector → `amw-mcit` ← Grafana datasource ← dashboard):
 1. `kg_impact(mcit, <opi-5>)` includes the `memory-mcp` Deployment and the public hostname.
 2. `kg_path(mcit, <hostname>, <memory-mcp deployment>)` returns the chain above.
 3. `kg_traverse(mcit, <memory-mcp deployment>, as_of=2026-09-20)` shows `ms01-k8s` and not `mcit-k8s`.
@@ -370,6 +388,7 @@ All of the following must hold:
 6. `kg_upsert_entity` with an ARM ID of a NIC typed as a VM returns `type_id_mismatch`; `type="azurerm_kubernetes_cluster"` resolves to `Microsoft.ContainerService/managedClusters`.
 7. Re-running the full seed batch reports only `updated`: no new entities and no new edges.
 8. Memory and latency: p95 `kg_traverse` (depth 3) < 150 ms via the public endpoint; RSS within the §9 limit.
+9. `kg_impact(mcit, <amw-mcit>)` includes the Grafana datasource (depth 1) and the dashboard that queries it (depth 2).
 
 ---
 
