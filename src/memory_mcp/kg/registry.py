@@ -17,6 +17,7 @@ KINDS = ("compute", "container", "network", "dns", "edge", "database", "storage"
          "security", "secret", "observability", "messaging", "analytics", "ai", "integration",
          "org", "host", "work", "inventory", "other")
 GRAPH_ID_RE = re.compile(r"^[a-z][a-z0-9_]{1,31}$")
+K8S_CRD_RE = re.compile(r"^[a-z0-9-]+(\.[a-z0-9-]+)+/[A-Z][A-Za-z0-9]+$")
 _PKG = Path(__file__).parent
 
 
@@ -78,7 +79,33 @@ class Registry:
         return cls(graphs, relations, types)
 
     def _build_type_index(self) -> None:
-        """Placeholder hook; Task 4 fills in alias/case-insensitive indexes."""
+        self._alias: dict[str, dict[str, TypeDef]] = {}
+        self._lower: dict[str, dict[str, TypeDef]] = {}
+        for prov, types in self.types.items():
+            self._alias[prov] = {a: td for td in types.values() for a in td.aliases}
+            self._lower[prov] = {t.lower(): td for t, td in types.items()}
+
+    def resolve_type(self, provider: str, type_str: str) -> TypeDef:
+        self.require_provider(provider)
+        types = self.types.get(provider, {})
+        td = types.get(type_str) or self._alias[provider].get(type_str) or self._lower[provider].get(type_str.lower())
+        if td:
+            return td
+        if provider == "kubernetes" and K8S_CRD_RE.match(type_str):
+            known_groups = {t.split("/")[0] for t in types}
+            if type_str.split("/")[0] not in known_groups:
+                return TypeDef("kubernetes", type_str, "container")
+        choices = list(types) + list(self._alias[provider])
+        raise KGError("unknown_type", f"Unknown {provider} type '{type_str}'", field="type",
+                      suggestions=suggest(type_str, choices))
+
+    def check_kinds(self, rel: RelationDef, src_kind: str, dst_kind: str) -> None:
+        if rel.src_kinds and src_kind not in rel.src_kinds:
+            raise KGError("kind_constraint", f"'{rel.name}' source must be one of {sorted(rel.src_kinds)}, got '{src_kind}'",
+                          field="src")
+        if rel.dst_kinds and dst_kind not in rel.dst_kinds:
+            raise KGError("kind_constraint", f"'{rel.name}' target must be one of {sorted(rel.dst_kinds)}, got '{dst_kind}'",
+                          field="dst")
 
     def require_graph(self, graph: str) -> None:
         if graph not in self.graphs:
