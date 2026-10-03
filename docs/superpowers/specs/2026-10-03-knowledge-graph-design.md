@@ -395,7 +395,7 @@ All of the following must hold:
 - Live ingestion (Terraform state, Azure Resource Graph, AWS Config, GCP Asset Inventory, vCenter, k8s API)
 - Per-graph tokens or read/write scopes. The data model already supports adding these later
 - Graph visualization in `memory-ui`
-- Product rename to `recall` (RCL-27). `kg_*` tool names are deliberately rename-neutral
+- Code/image renames. As of 2026-10-03 the product is named **memory-twin-mcp**, superseding the earlier `recall` plan (RCL-4, RCL-27). Renaming the repo, package and image is separate work; `kg_*` tool names are rename-neutral
 
 ## 13. Risks
 
