@@ -2,7 +2,6 @@ import time
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone, timedelta
-from functools import lru_cache
 from typing import Optional
 
 from opentelemetry import metrics
@@ -12,12 +11,10 @@ from qdrant_client.models import (
     FieldCondition, MatchValue, MatchAny, PointIdsList,
     PayloadSchemaType,
 )
-from sentence_transformers import SentenceTransformer
+
+from memory_mcp.embedding import Embedder, VECTOR_DIM
 
 COLLECTION = "memories"
-EMBEDDING_MODEL = "all-MiniLM-L6-v2"
-VECTOR_DIM = 384
-_EMBED_CACHE_SIZE = 512
 
 _meter = metrics.get_meter("memory_mcp")
 _upsert_counter = _meter.create_counter("memory_mcp_upsert_total", description="Total upserts")
@@ -40,10 +37,9 @@ class MemoryRecord:
 
 
 class MemoryStore:
-    def __init__(self, qdrant_url: str, stale_days: int = 30):
+    def __init__(self, qdrant_url: str, stale_days: int = 30, embedder: Embedder | None = None):
         self._client = QdrantClient(url=qdrant_url)
-        self._model = SentenceTransformer(EMBEDDING_MODEL)
-        MemoryStore._set_model(self._model)
+        self._embedder = embedder or Embedder()
         self._stale_days = stale_days
         self._ensure_collection()
         # Register observable gauge for memory count
@@ -54,6 +50,14 @@ class MemoryStore:
                 callbacks=[self._observe_memory_count],
                 description="Total memories stored",
             )
+
+    @property
+    def client(self) -> QdrantClient:
+        return self._client
+
+    @property
+    def embedder(self) -> Embedder:
+        return self._embedder
 
     def _ensure_collection(self) -> None:
         existing = [c.name for c in self._client.get_collections().collections]
@@ -83,18 +87,7 @@ class MemoryStore:
             pass
 
     def _embed(self, text: str) -> list[float]:
-        return self._embed_cached(text)
-
-    @staticmethod
-    @lru_cache(maxsize=_EMBED_CACHE_SIZE)
-    def _embed_cached(text: str) -> list[float]:
-        # NOTE: _embed_cached is a staticmethod so lru_cache works (no self).
-        # The model reference is set once during __init__ via _set_model.
-        return MemoryStore._model_ref.encode(text).tolist()
-
-    @classmethod
-    def _set_model(cls, model: SentenceTransformer) -> None:
-        cls._model_ref = model
+        return self._embedder.embed(text)
 
     def is_stale(self, updated_at: str) -> bool:
         updated = datetime.fromisoformat(updated_at)

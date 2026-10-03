@@ -21,13 +21,14 @@ dependencies = [
     "opentelemetry-instrumentation-fastapi>=0.45b0",
     "setuptools>=83.0.0",
     "msgpack>=1.2.1",
+    "pyyaml>=6",
 ]
 
 [project.optional-dependencies]
 dev = ["pytest>=8", "pytest-asyncio>=0.23", "pytest-mock>=3.14"]
 
 [tool.setuptools.package-data]
-memory_mcp = ["templates/*"]
+memory_mcp = ["templates/*", "kg/config/*.yaml", "kg/catalog/*.json"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
