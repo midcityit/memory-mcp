@@ -60,6 +60,10 @@ def create_app() -> FastAPI:
         if credentials is None or credentials.credentials != cfg.api_token:
             raise HTTPException(status_code=401, detail="Invalid or missing token")
 
+    if kg is not None:
+        from memory_mcp.kg.rest import build_router
+        app.include_router(build_router(kg.service, kg.query, require_token))
+
     @app.get("/health")
     def health():
         return {"status": "ok"}
