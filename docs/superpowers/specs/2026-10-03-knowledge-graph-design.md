@@ -385,7 +385,8 @@ All of the following must hold:
    - Call `kg_retire_entity` / `kg_unlink` on decommission or move; never hard-delete.
    - Record only topology you have verified; attach `evidence_memory_ids`.
    - Use `kg_xref` when one graph's work reuses another's pattern.
-6. Tracking: a new RCL epic with stories per §7 component plus rollout; update the Confluence page `IN/memory-mcp`.
+6. Tracking: epic RCL-30. **Sprint 1** (2026-10-05 → 10-16) covers steps 1–2: built and passing on dev (RCL-41, RCL-31…RCL-38). **Sprint 2** (2026-10-19 → 10-30) covers steps 3–5 and 7: prod (RCL-39), agent adoption (RCL-40), visualization (RCL-42).
+7. **memory-ui visualization (RCL-42):** a read-only `/graph` explorer in `midcityit/memory-ui` using the §8 REST routes server-side. It has explore, impact, path and `as_of` views, an entity panel linking to memories, and an overview landing page. Library and any UI-specific endpoint are settled in a short design pass at the start of RCL-42 (Cytoscape.js is the leading candidate).
 
 ---
 
@@ -394,7 +395,7 @@ All of the following must hold:
 - LLM auto-extraction of entities from memory content
 - Live ingestion (Terraform state, Azure Resource Graph, AWS Config, GCP Asset Inventory, vCenter, k8s API)
 - Per-graph tokens or read/write scopes. The data model already supports adding these later
-- Graph visualization in `memory-ui`
+- Editing the graph from a UI. A **read-only** explorer in `memory-ui` was added on 2026-10-03 as RCL-42 (Sprint 2); see §11.7
 - Code/image renames. As of 2026-10-03 the product is named **memory-twin-mcp**, superseding the earlier `recall` plan (RCL-4, RCL-27). Renaming the repo, package and image is separate work; `kg_*` tool names are rename-neutral
 
 ## 13. Risks
