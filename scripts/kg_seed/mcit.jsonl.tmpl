@@ -1,0 +1,57 @@
+{"record": "entity", "provider": "cloudflare", "type": "dns_record", "native_id": "${CF_ACCOUNT_ID}/chriscastrotech.com/dns_record/memory-mcp", "display_name": "memory-mcp.chriscastrotech.com"}
+{"record": "entity", "provider": "cloudflare", "type": "zero_trust_tunnel_cloudflared", "native_id": "${CF_ACCOUNT_ID}/-/zero_trust_tunnel_cloudflared/homelab", "display_name": "homelab tunnel"}
+{"record": "entity", "provider": "kubernetes", "type": "core/Cluster", "native_id": "mcit-k8s/_cluster/core/Cluster/mcit-k8s", "display_name": "mcit-k8s"}
+{"record": "entity", "provider": "kubernetes", "type": "core/Node", "native_id": "mcit-k8s/_cluster/core/Node/opi-5", "display_name": "opi-5", "properties": {"arch": "arm64"}}
+{"record": "entity", "provider": "kubernetes", "type": "core/Namespace", "native_id": "mcit-k8s/_cluster/core/Namespace/digital-twin", "display_name": "digital-twin"}
+{"record": "entity", "provider": "kubernetes", "type": "gateway.networking.k8s.io/Gateway", "native_id": "mcit-k8s/${MCIT_GATEWAY_NS}/gateway.networking.k8s.io/Gateway/${MCIT_GATEWAY_NAME}", "display_name": "mcit envoy gateway"}
+{"record": "entity", "provider": "kubernetes", "type": "gateway.networking.k8s.io/HTTPRoute", "native_id": "mcit-k8s/digital-twin/gateway.networking.k8s.io/HTTPRoute/memory-mcp", "display_name": "memory-mcp httproute"}
+{"record": "entity", "provider": "kubernetes", "type": "core/Service", "native_id": "mcit-k8s/digital-twin/core/Service/memory-mcp", "display_name": "memory-mcp service"}
+{"record": "entity", "provider": "kubernetes", "type": "apps/Deployment", "native_id": "mcit-k8s/digital-twin/apps/Deployment/memory-mcp", "display_name": "memory-mcp", "aliases": ["memory-twin prod", "digital-twin memory-mcp"], "memory_ids": ["d73c22c3-9a7d-4fe2-a5b8-5668341cc9d3", "0eb13387-4e5a-43c2-a4d8-1fbc40d6e1a9"]}
+{"record": "entity", "provider": "kubernetes", "type": "apps/StatefulSet", "native_id": "mcit-k8s/digital-twin/apps/StatefulSet/qdrant", "display_name": "qdrant (prod)"}
+{"record": "entity", "provider": "azure", "type": "Microsoft.Insights/components", "native_id": "${MCIT_APPI_ID}", "display_name": "appi-memory-twin-mcit"}
+{"record": "entity", "provider": "azure", "type": "Microsoft.KeyVault/vaults", "native_id": "${CCTECH_KV_ID}", "display_name": "cctech-keyvault"}
+{"record": "entity", "provider": "logical", "type": "repo", "native_id": "midcityit/memory-mcp", "display_name": "memory-mcp repo"}
+{"record": "entity", "provider": "logical", "type": "repo", "native_id": "midcityit/infra-tf", "display_name": "infra-tf repo"}
+{"record": "entity", "provider": "logical", "type": "jira_issue", "native_id": "MCIT-193", "display_name": "MCIT-193 prod memory-twin migration"}
+{"record": "entity", "provider": "logical", "type": "jira_issue", "native_id": "MCIT-251", "display_name": "MCIT-251 decommission ms01 digital-twin"}
+{"record": "entity", "provider": "logical", "type": "jira_issue", "native_id": "MCIT-184", "display_name": "MCIT-184 Key Vault CSI on mcit-k8s"}
+{"record": "entity", "provider": "kubernetes", "type": "core/Cluster", "native_id": "ms01-k8s/_cluster/core/Cluster/ms01-k8s", "display_name": "ms01-k8s"}
+{"record": "entity", "provider": "kubernetes", "type": "apps/Deployment", "native_id": "ms01-k8s/digital-twin/apps/Deployment/memory-mcp", "display_name": "memory-mcp (ms01 warm rollback)", "properties": {"replicas": 0}}
+{"record": "entity", "provider": "kubernetes", "type": "core/Service", "native_id": "ms01-k8s/digital-twin/core/Service/memory-mcp", "display_name": "memory-mcp service (ms01)"}
+{"record": "entity", "provider": "kubernetes", "type": "apps/StatefulSet", "native_id": "ms01-k8s/digital-twin/apps/StatefulSet/qdrant", "display_name": "qdrant (ms01 warm rollback)"}
+{"record": "entity", "provider": "kubernetes", "type": "core/PersistentVolume", "native_id": "ms01-k8s/_cluster/core/PersistentVolume/${MS01_QDRANT_PV}", "display_name": "ms01 qdrant PV /data/qdrant", "properties": {"hostPath": "/data/qdrant"}}
+{"record": "entity", "provider": "azure", "type": "Microsoft.Monitor/accounts", "native_id": "${MCIT_AMW_ID}", "display_name": "amw-mcit (Azure Monitor workspace)"}
+{"record": "entity", "provider": "kubernetes", "type": "apps/Deployment", "native_id": "mcit-k8s/monitoring/apps/Deployment/${MCIT_OTEL_DEPLOYMENT}", "display_name": "otel-collector"}
+{"record": "entity", "provider": "grafana", "type": "Instance", "native_id": "${GRAFANA_HOST}/Instance/${GRAFANA_HOST}", "display_name": "Grafana (${GRAFANA_HOST})"}
+{"record": "entity", "provider": "grafana", "type": "Datasource", "native_id": "${GRAFANA_HOST}/Datasource/${GRAFANA_AMW_DS_UID}", "display_name": "amw-mcit datasource"}
+{"record": "entity", "provider": "grafana", "type": "Dashboard", "native_id": "${GRAFANA_HOST}/Dashboard/${GRAFANA_DASHBOARD_UID}", "display_name": "memory-mcp Overview"}
+{"record": "edge", "src": "cloudflare:${CF_ACCOUNT_ID_LC}/chriscastrotech.com/dns_record/memory-mcp", "relation": "resolves_to", "dst": "cloudflare:${CF_ACCOUNT_ID_LC}/-/zero_trust_tunnel_cloudflared/homelab"}
+{"record": "edge", "src": "cloudflare:${CF_ACCOUNT_ID_LC}/-/zero_trust_tunnel_cloudflared/homelab", "relation": "routes_to", "dst": "kubernetes:mcit-k8s/${MCIT_GATEWAY_NS}/gateway.networking.k8s.io/Gateway/${MCIT_GATEWAY_NAME}", "valid_from": "2026-09-27T07:00:00+00:00", "evidence_memory_ids": ["d73c22c3-9a7d-4fe2-a5b8-5668341cc9d3"]}
+{"record": "edge", "src": "cloudflare:${CF_ACCOUNT_ID_LC}/-/zero_trust_tunnel_cloudflared/homelab", "relation": "routes_to", "dst": "kubernetes:ms01-k8s/digital-twin/core/Service/memory-mcp", "valid_from": "2026-04-30T00:00:00+00:00", "valid_to": "2026-09-27T07:00:00+00:00", "retire_reason": "MCIT-193 cutover to mcit-k8s"}
+{"record": "edge", "src": "kubernetes:mcit-k8s/${MCIT_GATEWAY_NS}/gateway.networking.k8s.io/Gateway/${MCIT_GATEWAY_NAME}", "relation": "routes_to", "dst": "kubernetes:mcit-k8s/digital-twin/gateway.networking.k8s.io/HTTPRoute/memory-mcp"}
+{"record": "edge", "src": "kubernetes:mcit-k8s/digital-twin/gateway.networking.k8s.io/HTTPRoute/memory-mcp", "relation": "routes_to", "dst": "kubernetes:mcit-k8s/digital-twin/core/Service/memory-mcp"}
+{"record": "edge", "src": "kubernetes:mcit-k8s/digital-twin/core/Service/memory-mcp", "relation": "routes_to", "dst": "kubernetes:mcit-k8s/digital-twin/apps/Deployment/memory-mcp"}
+{"record": "edge", "src": "kubernetes:mcit-k8s/digital-twin/apps/Deployment/memory-mcp", "relation": "runs_on", "dst": "kubernetes:mcit-k8s/_cluster/core/Node/opi-5", "valid_from": "2026-09-27T07:00:00+00:00"}
+{"record": "edge", "src": "kubernetes:mcit-k8s/digital-twin/apps/StatefulSet/qdrant", "relation": "runs_on", "dst": "kubernetes:mcit-k8s/_cluster/core/Node/opi-5"}
+{"record": "edge", "src": "kubernetes:mcit-k8s/digital-twin/apps/Deployment/memory-mcp", "relation": "depends_on", "dst": "kubernetes:mcit-k8s/digital-twin/apps/StatefulSet/qdrant"}
+{"record": "edge", "src": "kubernetes:mcit-k8s/digital-twin/apps/Deployment/memory-mcp", "relation": "depends_on", "dst": "azure:${CCTECH_KV_ID_LC}"}
+{"record": "edge", "src": "kubernetes:mcit-k8s/digital-twin/apps/Deployment/memory-mcp", "relation": "logs_to", "dst": "azure:${MCIT_APPI_ID_LC}"}
+{"record": "edge", "src": "kubernetes:mcit-k8s/_cluster/core/Namespace/digital-twin", "relation": "contains", "dst": "kubernetes:mcit-k8s/digital-twin/apps/Deployment/memory-mcp"}
+{"record": "edge", "src": "kubernetes:mcit-k8s/_cluster/core/Namespace/digital-twin", "relation": "member_of", "dst": "kubernetes:mcit-k8s/_cluster/core/Cluster/mcit-k8s"}
+{"record": "edge", "src": "kubernetes:mcit-k8s/_cluster/core/Node/opi-5", "relation": "member_of", "dst": "kubernetes:mcit-k8s/_cluster/core/Cluster/mcit-k8s"}
+{"record": "edge", "src": "kubernetes:mcit-k8s/digital-twin/apps/Deployment/memory-mcp", "relation": "deployed_by", "dst": "logical:midcityit/memory-mcp"}
+{"record": "edge", "src": "kubernetes:mcit-k8s/digital-twin/apps/Deployment/memory-mcp", "relation": "defined_in", "dst": "logical:midcityit/infra-tf"}
+{"record": "edge", "src": "kubernetes:mcit-k8s/digital-twin/apps/Deployment/memory-mcp", "relation": "tracked_in", "dst": "logical:MCIT-193"}
+{"record": "edge", "src": "kubernetes:ms01-k8s/digital-twin/core/Service/memory-mcp", "relation": "routes_to", "dst": "kubernetes:ms01-k8s/digital-twin/apps/Deployment/memory-mcp"}
+{"record": "edge", "src": "kubernetes:ms01-k8s/digital-twin/apps/Deployment/memory-mcp", "relation": "runs_on", "dst": "kubernetes:ms01-k8s/_cluster/core/Cluster/ms01-k8s"}
+{"record": "edge", "src": "kubernetes:ms01-k8s/digital-twin/apps/Deployment/memory-mcp", "relation": "depends_on", "dst": "kubernetes:ms01-k8s/digital-twin/apps/StatefulSet/qdrant"}
+{"record": "edge", "src": "kubernetes:ms01-k8s/digital-twin/apps/StatefulSet/qdrant", "relation": "depends_on", "dst": "kubernetes:ms01-k8s/_cluster/core/PersistentVolume/${MS01_QDRANT_PV}"}
+{"record": "edge", "src": "kubernetes:ms01-k8s/_cluster/core/PersistentVolume/${MS01_QDRANT_PV}", "relation": "tracked_in", "dst": "logical:MCIT-251"}
+{"record": "edge", "src": "kubernetes:mcit-k8s/digital-twin/apps/Deployment/memory-mcp", "relation": "sends_metrics_to", "dst": "kubernetes:mcit-k8s/monitoring/apps/Deployment/${MCIT_OTEL_DEPLOYMENT}"}
+{"record": "edge", "src": "kubernetes:mcit-k8s/digital-twin/apps/Deployment/memory-mcp", "relation": "sends_traces_to", "dst": "kubernetes:mcit-k8s/monitoring/apps/Deployment/${MCIT_OTEL_DEPLOYMENT}"}
+{"record": "edge", "src": "kubernetes:mcit-k8s/monitoring/apps/Deployment/${MCIT_OTEL_DEPLOYMENT}", "relation": "sends_metrics_to", "dst": "azure:${MCIT_AMW_ID_LC}"}
+{"record": "edge", "src": "grafana:${GRAFANA_HOST_LC}/Datasource/${GRAFANA_AMW_DS_UID}", "relation": "reads_from", "dst": "azure:${MCIT_AMW_ID_LC}"}
+{"record": "edge", "src": "grafana:${GRAFANA_HOST_LC}/Dashboard/${GRAFANA_DASHBOARD_UID}", "relation": "queries", "dst": "grafana:${GRAFANA_HOST_LC}/Datasource/${GRAFANA_AMW_DS_UID}"}
+{"record": "edge", "src": "grafana:${GRAFANA_HOST_LC}/Dashboard/${GRAFANA_DASHBOARD_UID}", "relation": "visualizes", "dst": "kubernetes:mcit-k8s/digital-twin/apps/Deployment/memory-mcp"}
+{"record": "edge", "src": "grafana:${GRAFANA_HOST_LC}/Instance/${GRAFANA_HOST}", "relation": "contains", "dst": "grafana:${GRAFANA_HOST_LC}/Dashboard/${GRAFANA_DASHBOARD_UID}"}
+{"record": "edge", "src": "grafana:${GRAFANA_HOST_LC}/Instance/${GRAFANA_HOST}", "relation": "contains", "dst": "grafana:${GRAFANA_HOST_LC}/Datasource/${GRAFANA_AMW_DS_UID}"}

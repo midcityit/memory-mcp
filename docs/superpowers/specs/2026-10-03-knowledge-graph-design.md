@@ -113,7 +113,7 @@ Each edge is stored once, in its canonical direction. The registry supplies an i
 | vmware | `{vcenter_fqdn}/{inventory_path}` (not the moref) | lowercase FQDN |
 | hyperv | `{host_or_cluster_fqdn}/{object_type}/{name}` | lowercase FQDN |
 | cloudflare | `{account_id}/{zone or -}/{object_type}/{id_or_name}` | lowercase |
-| kubernetes | `{cluster}/{namespace or _cluster}/{group/kind}/{name}` | as-is |
+| kubernetes | `{cluster}/{namespace or _cluster}/{group}/{Kind}/{name}` (`core` for the core group, e.g. `core/Service`, `apps/Deployment`) | as-is |
 | grafana | `{grafana_host}/{type}/{uid}` (`Instance` uses the host as uid) | lowercase host |
 | prometheus | `{prometheus_host}/{type}/{name}` | lowercase host |
 | netbox | `{netbox_host}/{app.model}/{id}` (numeric id) | lowercase host |
@@ -224,10 +224,10 @@ All tools are prefixed `kg_` and registered next to the existing 4 memory tools,
 | Tool | Behavior |
 |---|---|
 | `kg_upsert_entity(graph, provider, type, native_id, display_name, aliases=[], properties={}, memory_ids=[], agent="claude-code")` | Create or update. Returns `{key, status: created\|updated, type, kind, possible_duplicates?}` |
-| `kg_link(graph, src, relation, dst, properties={}, evidence_memory_ids=[], agent)` | Both endpoints must exist and be current. If the same `(src, relation, dst)` edge is already current, it is updated in place; otherwise a new edge is created with `valid_from=now` |
+| `kg_link(graph, src, relation, dst, properties={}, evidence_memory_ids=[], agent)` | Both endpoints must exist and be current. If the same `(src, relation, dst)` edge is already current, it is updated in place; otherwise a new edge is created with `valid_from=now` (optional `valid_from` for historical backfill) |
 | `kg_unlink(graph, src, relation, dst, reason)` | Sets `valid_to=now` and `retire_reason` on the current edge. Error `not_found` if there is none |
 | `kg_retire_entity(graph, key, reason)` | Retires the entity and all of its current edges, both directions |
-| `kg_batch(graph, entities=[], edges=[], agent)` | Validates every item first; on any validation error nothing is written and every error is returned. Then writes entities, then edges, where edge endpoints may refer to entities in the same batch. If a write fails partway, returns `{written: [...], failed_at, error}`; retrying is safe |
+| `kg_batch(graph, entities=[], edges=[], agent)` | Validates every item first; on any validation error nothing is written and every error is returned. Edge items accept `valid_from`, `valid_to`, `retire_reason`; entity items accept `valid_from`, `valid_to`. Then writes entities, then edges, where edge endpoints may refer to entities in the same batch. If a write fails partway, returns `{written: [...], failed_at, error}`; retrying is safe |
 | `kg_xref(src, relation, dst, note, evidence_memory_ids=[], agent)` | Fully qualified keys; reference-class relations only; both endpoints must exist |
 
 **Validation pipeline** (also applied per item in a batch): graph exists → provider known → type resolves (§3) → native ID valid, normalized and consistent with the type (§2.4) → relation known and of the right class → src/dst kinds satisfy constraints → endpoints exist, are current, and are in the same graph.
@@ -247,9 +247,9 @@ All tools are prefixed `kg_` and registered next to the existing 4 memory tools,
 | `kg_resolve(query, graphs="*", provider?, kind?, type?, include_retired=false, limit=10)` | Ranked `{graph, key, display_name, type, kind, score, retired}`. An exact match on key, native_id or alias gets score 1.0 and ranks first |
 | `kg_get_entity(graph, key, as_of?, include_history=false)` | Full entity; edges in both directions grouped by relation (inverse label for incoming edges); memory refs `{id, name, type}`; xrefs; with `include_history`, a timeline of edge open/close events |
 | `kg_find(graph, provider?, kind?, type?, missing_relation?, direction="out", include_retired=false, limit=100, cursor?)` | Paged compact entities with `has_more`. `missing_relation` returns entities that lack a current edge of that relation (orphan finder) |
-| `kg_traverse(graph, start, direction="both", relations?, kinds?, max_depth=3, as_of?, follow_xrefs=false, limit=200, cursor?)` | BFS subgraph `{nodes, edges, has_more, truncated}`. `max_depth` capped at 6 |
+| `kg_traverse(graph, start, direction="both", relations?, kinds?, max_depth=3, as_of?, follow_xrefs=false, limit=200)` | BFS subgraph `{nodes, edges, truncated}`. `max_depth` capped at 6. Over budget → `truncated: true`; narrow with `relations`/`kinds`/`max_depth` |
 | `kg_path(graph, src, dst, relations?, max_depth=6)` | Up to 3 shortest paths (bidirectional BFS, undirected over the allowed relations) |
-| `kg_impact(graph, key, max_depth=4, as_of?)` | Reverse walk over `propagates` relations, grouped by depth and kind, plus `tracked_in` / `documented_in` targets of affected nodes |
+| `kg_impact(graph, key, max_depth=6, as_of?)` | Reverse walk over `propagates` relations, grouped by depth and kind, plus `tracked_in` / `documented_in` targets of affected nodes |
 | `kg_overview(graphs="*")` | Per graph: counts by kind and provider, top 10 hubs by current degree, entities changed in the last 7 days, dangling xref count. Target < 500 tokens |
 | `kg_related_across(graph, key, target_graphs="*", limit=10)` | Explicit xrefs touching the entity, plus same-`kind` similar entities in other graphs (vector similarity), each with linked memory refs filtered to types `decision`, `troubleshooting`, `runbook`, `architecture` |
 | `kg_for_memory(memory_id, graphs="*")` | Entities and edges that reference the memory (`memory_ids` / `evidence_memory_ids`) |
@@ -268,7 +268,7 @@ An edge or entity is **current at `t`** when `valid_from ≤ t` and (`valid_to` 
 
 ## 6. Algorithms (`kg/query.py`)
 
-Algorithms depend only on the `GraphStore` interface:
+Algorithms depend only on the public method set of `QdrantGraphStore`, sketched here as a Protocol (no separate `GraphStore` Protocol class exists in v1; extract one when a second backend appears):
 
 ```python
 class GraphStore(Protocol):
@@ -287,7 +287,7 @@ class GraphStore(Protocol):
 - **One BFS hop** is one `edges_from` / `edges_to` call. On Qdrant that is a single `scroll` with `src`/`dst` `MatchAny(frontier)`, a relation filter, and the time filter. Frontiers larger than 500 keys are chunked.
 - **Time filter on Qdrant:** `valid_from ≤ t` AND (`valid_to` IsNull OR `valid_to > t`). Timestamps are also stored as epoch-second floats (`valid_from_ts`, `valid_to_ts`) so range filters work.
 - **Hubs** are computed from `all_current_edges`, cached for 60 s per worker per graph.
-- `QdrantGraphStore` is the only implementation in v1. The interface exists so a FalkorDB backend could replace it later without changing the tools.
+- `QdrantGraphStore` is the only implementation in v1. The method set above exists so a FalkorDB backend could replace it later without changing the tools.
 
 ---
 
@@ -333,7 +333,7 @@ All routes require the bearer token, like the existing routes.
 | GET | `/kg/{graph}/entities/{key:path}` | Same as `kg_get_entity`. Keys contain `/` (ARM IDs, k8s paths), so the route uses FastAPI's `path` converter and clients URL-encode the key |
 | POST | `/kg/{graph}/traverse` · `/path` · `/impact` | Same as the tools |
 | GET | `/kg/{graph}/export` | JSONL stream (entities, edges, and xrefs touching the graph) |
-| POST | `/kg/{graph}/import` | JSONL; validated; idempotent |
+| POST | `/kg/{graph}/import` | NDJSON; validated; idempotent. Each line is a JSON object with a `record` marker (`entity`, `edge` or `xref`), the same format as export. Every line is validated before anything is written; a bad line returns 422 `invalid_json` with the line number |
 | DELETE | `/kg/{graph}/entities/{key:path}?hard=true` | Admin hard delete of an entity and its edges; marks affected xrefs `dangling` |
 
 ---
@@ -382,8 +382,8 @@ Seed the **`vtv`** graph with a thin slice: `aks-vtv-prod` and the customer-solu
 All of the following must hold (seed also includes the monitoring path memory-mcp → otel-collector → `amw-mcit` ← Grafana datasource ← dashboard):
 1. `kg_impact(mcit, <opi-5>)` includes the `memory-mcp` Deployment and the public hostname.
 2. `kg_path(mcit, <hostname>, <memory-mcp deployment>)` returns the chain above.
-3. `kg_traverse(mcit, <memory-mcp deployment>, as_of=2026-09-20)` shows `ms01-k8s` and not `mcit-k8s`.
-4. `kg_impact(mcit, <ms01 qdrant PV>)` returns no current dependents.
+3. `kg_traverse(mcit, <tunnel>, direction=out, max_depth=1, as_of=2026-09-20)` includes the ms01 memory-mcp Service and not the Envoy Gateway; without `as_of` it is the reverse.
+4. `kg_impact(mcit, <ms01 Qdrant PV>)` contains only ms01-k8s entities, never the mcit-k8s Deployment or the public hostname (ms01 still runs a warm-rollback copy, so the PV has current ms01 dependents; this is the MCIT-251 decommission evidence).
 5. `kg_related_across(vtv, <VTV-238>)` returns MCIT-184 through the xref.
 6. `kg_upsert_entity` with an ARM ID of a NIC typed as a VM returns `type_id_mismatch`; `type="azurerm_kubernetes_cluster"` resolves to `Microsoft.ContainerService/managedClusters`.
 7. Re-running the full seed batch reports only `updated`: no new entities and no new edges.

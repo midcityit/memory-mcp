@@ -184,6 +184,49 @@ Key details:
 
 ---
 
+## Knowledge graph (KG_ENABLED)
+
+Optional infrastructure knowledge graph (topology, blast radius, time-travel) stored in Qdrant alongside memories. Off by default: with `KG_ENABLED=false` no kg tools, routes or collections exist. REST routes live under `/kg/*` (see the design spec, section 8).
+
+| Env Var | Default | Description |
+|---------|---------|-------------|
+| `KG_ENABLED` | `false` | Feature flag for kg tools, routes and collections |
+| `KG_CONFIG_DIR` | packaged `kg/config` + `kg/catalog` | ConfigMap override for graphs, relations and catalogs |
+| `KG_DUP_THRESHOLD` | `0.90` | Duplicate-hint similarity |
+| `KG_MAX_CHARS` | `6000` | Default response budget |
+
+### KG tools
+
+| Tool | Purpose |
+|------|---------|
+| `kg_upsert_entity` | Create/update an entity (provider, type, native ID); call `kg_resolve` first to reuse keys |
+| `kg_link` | Create/refresh a topology edge between two current entities in one graph |
+| `kg_unlink` | Soft-retire a current edge (history kept) when something moves or is reconfigured |
+| `kg_retire_entity` | Soft-retire an entity and all its current edges (decommission) |
+| `kg_batch` | Record a whole topology at once (validated first, safe to re-run) |
+| `kg_xref` | Cross-graph reference between fully qualified keys (`pattern_from`, `lessons_from`, ...) |
+| `kg_resolve` | Find entity keys by name, alias, native ID or description |
+| `kg_get_entity` | Everything about one entity: edges, linked memories, xrefs, optional history |
+| `kg_find` | List entities by filter; `missing_relation` finds orphans |
+| `kg_traverse` | Neighborhood subgraph (BFS, max depth 6); `as_of` shows past topology |
+| `kg_path` | Up to 3 shortest paths between two entities |
+| `kg_impact` | Blast radius: everything that depends on an entity, by depth, plus linked Jira/Confluence |
+| `kg_overview` | Short orientation per graph: counts, hubs, recent changes |
+| `kg_related_across` | Lessons/patterns from other graphs via xrefs and similar entities |
+| `kg_for_memory` | Entities and edges that reference a memory |
+
+### Agent rules
+
+- Call `kg_resolve` before writing; reuse existing keys.
+- Call `kg_batch` after a verified `terraform apply`, migration or deployment.
+- Call `kg_retire_entity` / `kg_unlink` on decommission or move; never hard-delete.
+- Record only topology you have verified; attach `evidence_memory_ids`.
+- Use `kg_xref` when one graph's work reuses another's pattern.
+
+Acceptance: `python scripts/kg_acceptance.py` seeds the `mcit`/`vtv` topology and runs the 9 checks (needs `KG_BASE_URL`, `MEMORY_TWIN_BEARER` and the seed variables listed in the script).
+
+---
+
 ## CI/CD
 
 ### Branches & Tags
