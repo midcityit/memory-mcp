@@ -269,3 +269,70 @@ def test_batch_rejects_unknown_keys(svc):
     assert r["status"] == "rejected" and r["errors"][0]["field"] == "relaton"
     assert r["errors"][0]["error"] == "invalid_native_id"
     assert svc.batch("mcit", [], [_hist_edge(agent="me")])["status"] == "ok"
+
+
+# ── resource-cap hardening (security residual, RCL-30) ──────────────────────
+def test_alias_cap_enforced_after_merge(svc):
+    # 20 + 20 distinct aliases would merge to 40, exceeding MAX_ALIASES (32).
+    svc.upsert_entity("mcit", "logical", "jira_issue", "MCIT-100", aliases=[f"a{i}" for i in range(20)])
+    with pytest.raises(KGError) as e:
+        svc.upsert_entity("mcit", "logical", "jira_issue", "MCIT-100", aliases=[f"b{i}" for i in range(20)])
+    assert e.value.code == "invalid_native_id" and e.value.field == "aliases"
+
+
+def test_memory_ids_cap_enforced_after_merge(svc):
+    svc.upsert_entity("mcit", "logical", "jira_issue", "MCIT-101", memory_ids=[f"m{i}" for i in range(80)])
+    with pytest.raises(KGError) as e:
+        svc.upsert_entity("mcit", "logical", "jira_issue", "MCIT-101", memory_ids=[f"n{i}" for i in range(80)])
+    assert e.value.code == "invalid_native_id" and e.value.field == "memory_ids"
+
+
+def test_properties_cap_enforced_after_merge(svc):
+    svc.upsert_entity("mcit", "logical", "jira_issue", "MCIT-102", properties={f"k{i}": 1 for i in range(40)})
+    with pytest.raises(KGError) as e:
+        svc.upsert_entity("mcit", "logical", "jira_issue", "MCIT-102", properties={f"j{i}": 1 for i in range(40)})
+    assert e.value.code == "invalid_native_id" and e.value.field == "properties"
+
+
+def test_non_str_alias_rejected(svc):
+    with pytest.raises(KGError) as e:
+        svc.upsert_entity("mcit", "logical", "jira_issue", "MCIT-103", aliases=[{"not": "a string"}])
+    assert e.value.code == "invalid_native_id" and e.value.field == "aliases"
+    r = svc.batch("mcit", [{"provider": "logical", "type": "jira_issue", "native_id": "MCIT-104",
+                            "aliases": [123]}], [])
+    assert r["status"] == "rejected" and r["errors"][0]["field"] == "aliases"
+
+
+def test_oversized_property_value_rejected(svc):
+    with pytest.raises(KGError) as e:
+        svc.upsert_entity("mcit", "logical", "jira_issue", "MCIT-105", properties={"blob": "x" * 5000})
+    assert e.value.code == "invalid_native_id" and e.value.field == "properties"
+
+
+def test_edge_evidence_cap_enforced(svc):
+    _hist_setup(svc)
+    r = svc.batch("mcit", [], [_hist_edge(evidence_memory_ids=[f"m{i}" for i in range(200)])])
+    assert r["status"] == "rejected" and r["errors"][0]["field"] == "evidence_memory_ids"
+
+
+def test_edge_properties_cap_enforced(svc):
+    _hist_setup(svc)
+    r = svc.batch("mcit", [], [_hist_edge(properties={f"k{i}": 1 for i in range(100)})])
+    assert r["status"] == "rejected" and r["errors"][0]["field"] == "properties"
+
+
+def test_xref_note_cap_enforced(svc):
+    svc.upsert_entity("mcit", "logical", "jira_issue", "MCIT-106")
+    svc.upsert_entity("vtv", "logical", "jira_issue", "VTV-1")
+    with pytest.raises(KGError) as e:
+        svc.xref("mcit::logical:MCIT-106", "similar_to", "vtv::logical:VTV-1", note="x" * 5000)
+    assert e.value.code == "invalid_native_id" and e.value.field == "note"
+
+
+def test_batch_size_cap_enforced(svc):
+    from memory_mcp.kg.service import MAX_BATCH_ITEMS
+    items = [{"provider": "logical", "type": "jira_issue", "native_id": f"MCIT-{i}"}
+             for i in range(MAX_BATCH_ITEMS + 1)]
+    with pytest.raises(KGError) as e:
+        svc.batch("mcit", items, [])
+    assert e.value.code == "invalid_native_id"

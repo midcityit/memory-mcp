@@ -18,6 +18,13 @@ EDGE_FIELDS = ("src", "relation", "dst", "properties", "evidence_memory_ids", "v
 MAX_DISPLAY_NAME = 256
 MAX_NATIVE_ID = 1024
 MAX_ALIASES = 32
+MAX_PROPERTIES = 64
+MAX_PROPERTY_KEY = 128
+MAX_PROPERTY_VALUE = 4096
+MAX_MEMORY_IDS = 128
+MAX_MEMORY_ID = 256
+MAX_NOTE = 4096
+MAX_BATCH_ITEMS = 2000
 
 _meter = metrics.get_meter("memory_mcp.kg")
 _writes = _meter.create_counter("kg_writes_total", description="Knowledge graph writes")
@@ -52,17 +59,43 @@ def _check_interval(valid_from: str | None, valid_to: str | None) -> None:
         raise KGError("invalid_native_id", "'valid_from' must be earlier than 'valid_to'", field="valid_to")
 
 
-def _check_caps(native_id, display_name, aliases) -> None:
+def _check_str_list(values, field: str, max_count: int, max_len: int) -> None:
+    if not values:
+        return
+    if len(values) > max_count:
+        raise KGError("invalid_native_id", f"at most {max_count} {field} allowed", field=field)
+    for v in values:
+        if not isinstance(v, str):
+            raise KGError("invalid_native_id", f"each {field} entry must be a string, got {type(v).__name__}",
+                          field=field)
+        if len(v) > max_len:
+            raise KGError("invalid_native_id", f"each {field} entry must be at most {max_len} characters", field=field)
+
+
+def _check_properties(properties, field: str = "properties") -> None:
+    if not properties:
+        return
+    if not isinstance(properties, dict):
+        raise KGError("invalid_native_id", f"{field} must be an object, got {type(properties).__name__}", field=field)
+    if len(properties) > MAX_PROPERTIES:
+        raise KGError("invalid_native_id", f"at most {MAX_PROPERTIES} {field} allowed", field=field)
+    for k, v in properties.items():
+        if not isinstance(k, str) or len(k) > MAX_PROPERTY_KEY:
+            raise KGError("invalid_native_id", f"each {field} key must be a string of at most {MAX_PROPERTY_KEY} "
+                          "characters", field=field)
+        if v is not None and len(str(v)) > MAX_PROPERTY_VALUE:
+            raise KGError("invalid_native_id", f"each {field} value must be at most {MAX_PROPERTY_VALUE} characters",
+                          field=field)
+
+
+def _check_caps(native_id, display_name, aliases, properties=None, memory_ids=None) -> None:
     if isinstance(native_id, str) and len(native_id) > MAX_NATIVE_ID:
         raise KGError("invalid_native_id", f"native_id exceeds {MAX_NATIVE_ID} characters", field="native_id")
     if isinstance(display_name, str) and len(display_name) > MAX_DISPLAY_NAME:
         raise KGError("invalid_native_id", f"display_name exceeds {MAX_DISPLAY_NAME} characters", field="display_name")
-    if aliases:
-        if len(aliases) > MAX_ALIASES:
-            raise KGError("invalid_native_id", f"at most {MAX_ALIASES} aliases allowed", field="aliases")
-        if any(isinstance(a, str) and len(a) > MAX_DISPLAY_NAME for a in aliases):
-            raise KGError("invalid_native_id", f"each alias must be at most {MAX_DISPLAY_NAME} characters",
-                          field="aliases")
+    _check_str_list(aliases, "aliases", MAX_ALIASES, MAX_DISPLAY_NAME)
+    _check_properties(properties)
+    _check_str_list(memory_ids, "memory_ids", MAX_MEMORY_IDS, MAX_MEMORY_ID)
 
 
 def _check_keys(item: dict, allowed: tuple[str, ...]) -> None:
@@ -81,7 +114,7 @@ class KGService:
     def _prepare_entity(self, graph, provider, type, native_id, display_name=None, aliases=None, properties=None,
                         memory_ids=None, agent="claude-code", valid_from=None, valid_to=None) -> Entity:
         self.reg.require_graph(graph)
-        _check_caps(native_id, display_name, aliases)
+        _check_caps(native_id, display_name, aliases, properties, memory_ids)
         self.reg.require_provider(provider)
         td = self.reg.resolve_type(provider, type)
         nid = normalize_native_id(provider, td, native_id)
@@ -113,6 +146,10 @@ class KGService:
                          aliases=_union(old.aliases, new.aliases), properties=props,
                          memory_ids=_union(old.memory_ids, new.memory_ids), agent=new.agent,
                          updated_at=new.updated_at, valid_to=valid_to)
+        # Re-check caps after merge: _union/dict merge can grow collections past input limits across updates.
+        _check_str_list(merged.aliases, "aliases", MAX_ALIASES, MAX_DISPLAY_NAME)
+        _check_properties(merged.properties)
+        _check_str_list(merged.memory_ids, "memory_ids", MAX_MEMORY_IDS, MAX_MEMORY_ID)
         return self.store.upsert_entity(graph, merged), status
 
     def _duplicates(self, graph: str, e: Entity) -> list[dict]:
@@ -157,6 +194,8 @@ class KGService:
     def _write_edge(self, graph, src, relation, dst, properties=None, evidence_memory_ids=None, agent="claude-code",
                     valid_from=None, valid_to=None, retire_reason=None) -> dict:
         now = now_iso()
+        _check_properties(properties)
+        _check_str_list(evidence_memory_ids, "evidence_memory_ids", MAX_MEMORY_IDS, MAX_MEMORY_ID)
         if valid_to:  # historical record
             e = Edge(src=src, relation=relation, dst=dst, properties=dict(properties or {}),
                      evidence_memory_ids=_union([], evidence_memory_ids), agent=agent, created_at=now,
@@ -167,6 +206,9 @@ class KGService:
         if cur:
             e = replace(cur, properties={**cur.properties, **(properties or {})},
                         evidence_memory_ids=_union(cur.evidence_memory_ids, evidence_memory_ids), agent=agent)
+            # Re-check after merge: repeated links can grow these past input limits.
+            _check_properties(e.properties)
+            _check_str_list(e.evidence_memory_ids, "evidence_memory_ids", MAX_MEMORY_IDS, MAX_MEMORY_ID)
             status = "updated"
         else:
             e = Edge(src=src, relation=relation, dst=dst, properties=dict(properties or {}),
@@ -210,6 +252,11 @@ class KGService:
     # ── batch ────────────────────────────────────────────────────────────────
     def batch(self, graph, entities, edges, agent="claude-code") -> dict:
         self.reg.require_graph(graph)
+        n_items = len(entities or []) + len(edges or [])
+        if n_items > MAX_BATCH_ITEMS:
+            raise KGError("invalid_native_id",
+                          f"batch has {n_items} items; at most {MAX_BATCH_ITEMS} (entities + edges) allowed",
+                          field=None)
         errors, prepared = [], []
         for i, item in enumerate(entities or []):
             try:
@@ -255,6 +302,8 @@ class KGService:
                         else:
                             raise KGError("endpoint_not_found", f"{field} must be a string, got {type(val).__name__}", field=field)
                 _check_interval(item.get("valid_from"), item.get("valid_to"))
+                _check_properties(item.get("properties"))
+                _check_str_list(item.get("evidence_memory_ids"), "evidence_memory_ids", MAX_MEMORY_IDS, MAX_MEMORY_ID)
                 self._check_edge(graph, item["src"], item["relation"], item["dst"],
                                  current=not item.get("valid_to"), pending=pending)
             except KGError as ex:
@@ -284,6 +333,9 @@ class KGService:
         rel = self.reg.relation(relation)
         if rel.cls != "reference":
             raise KGError("relation_class_mismatch", f"'{relation}' is a topology relation; use kg_link", field="relation")
+        if isinstance(note, str) and len(note) > MAX_NOTE:
+            raise KGError("invalid_native_id", f"note exceeds {MAX_NOTE} characters", field="note")
+        _check_str_list(evidence_memory_ids, "evidence_memory_ids", MAX_MEMORY_IDS, MAX_MEMORY_ID)
         for fq, field in ((src, "src"), (dst, "dst")):
             g, k = split_fq(fq)
             self.reg.require_graph(g)
@@ -292,6 +344,8 @@ class KGService:
         x = XRef(src=src, relation=relation, dst=dst, note=note,
                  evidence_memory_ids=_union(old.evidence_memory_ids if old else [], evidence_memory_ids),
                  agent=agent, created_at=old.created_at if old else now_iso())
+        # Re-check after merge: repeated xrefs can grow evidence past the input limit.
+        _check_str_list(x.evidence_memory_ids, "evidence_memory_ids", MAX_MEMORY_IDS, MAX_MEMORY_ID)
         self.store.put_xref(x)
         _writes.add(1, {"graph": src.split("::", 1)[0], "op": "xref"})
         return {"src": src, "relation": relation, "dst": dst, "status": "updated" if old else "created"}
