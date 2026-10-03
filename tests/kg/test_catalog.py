@@ -53,6 +53,14 @@ _spec.loader.exec_module(bkc)
     ("gcp", "iap.googleapis.com/IapSettings", "security"),
     ("gcp", "batch.googleapis.com/Job", "compute"),
     ("gcp", "dataplex.googleapis.com/Lake", "analytics"),
+    ("gcp", "networksecurity.googleapis.com/FirewallEndpoint", "security"),
+    ("gcp", "networkservices.googleapis.com/Gateway", "network"),
+    ("gcp", "certificatemanager.googleapis.com/Certificate", "secret"),
+    ("gcp", "cloudbuild.googleapis.com/Build", "work"),
+    ("gcp", "eventarc.googleapis.com/Trigger", "messaging"),
+    ("gcp", "vmwareengine.googleapis.com/PrivateCloud", "host"),
+    ("gcp", "orgpolicy.googleapis.com/Policy", "org"),
+    ("gcp", "securitycenter.googleapis.com/Finding", "security"),
     ("azure", "Contoso.Unknown/widgets", "other"),
 ])
 def test_classify_kind(provider, typ, kind):

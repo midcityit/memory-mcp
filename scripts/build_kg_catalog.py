@@ -107,6 +107,22 @@ RULES: dict[str, list[tuple[str, str]]] = {
         (r"^(batch|tpu)\.googleapis\.com/", "compute"),
         (r"^(netapp|lustre|backupdr)\.googleapis\.com/", "storage"),
         (r"^apikeys\.googleapis\.com/", "identity"),
+        (r"^networksecurity\.googleapis\.com/", "security"),
+        (r"^(securitycenter|securitycentermanagement|binaryauthorization|accesscontextmanager|websecurityscanner|recaptchaenterprise)\.googleapis\.com/", "security"),
+        (r"^(certificatemanager|privateca)\.googleapis\.com/", "secret"),
+        (r"^(networkservices|networkconnectivity|networkmanagement|servicenetworking|vpcaccess|servicedirectory|beyondcorp)\.googleapis\.com/", "network"),
+        (r"^(cloudbuild|clouddeploy|developerconnect|securesourcemanager)\.googleapis\.com/", "work"),
+        (r"^(eventarc|managedkafka)\.googleapis\.com/", "messaging"),
+        (r"^(memcache|memorystore|datastream|datamigration|oracledatabase)\.googleapis\.com/", "database"),
+        (r"^(storagetransfer|storageinsights|storagebatchoperations|gkebackup|parallelstore)\.googleapis\.com/", "storage"),
+        (r"^(gkemulticloud|gkeonprem|anthos|krmapihosting)\.googleapis\.com/", "container"),
+        (r"^(vmwareengine|vmmigration)\.googleapis\.com/", "host"),
+        (r"^(osconfig|workstations)\.googleapis\.com/", "compute"),
+        (r"^(orgpolicy|cloudbilling|assuredworkloads|serviceusage|servicemanagement|cloudquotas|essentialcontacts|privilegedaccessmanager)\.googleapis\.com/", "org"),
+        (r"^(managedidentities|identitytoolkit)\.googleapis\.com/", "identity"),
+        (r"^(datafusion|metastore|analyticshub|bigqueryreservation|bigquerydatatransfer)\.googleapis\.com/", "analytics"),
+        (r"^(integrations|connectors|cloudtasks)\.googleapis\.com/", "integration"),
+        (r"^(discoveryengine|notebooks|dialogflow|documentai)\.googleapis\.com/", "ai"),
     ],
     "cloudflare": [
         (r"^(dns_record|record|dns_)", "dns"),
@@ -120,13 +136,9 @@ RULES: dict[str, list[tuple[str, str]]] = {
 }
 
 # Types that `az provider list` does not report but ARM IDs use (scopes, and the subnet child type).
-# The GCP docs page rendered to curl is a partial list (it omits e.g. compute Instance), so alias targets
-# that are real Cloud Asset Inventory types but missing from the scraped page are added explicitly.
 EXTRAS = {
     "azure": ["Microsoft.Resources/subscriptions", "Microsoft.Resources/resourceGroups",
               "Microsoft.Network/virtualNetworks/subnets"],
-    "gcp": ["compute.googleapis.com/Firewall", "compute.googleapis.com/Instance", "compute.googleapis.com/Subnetwork",
-            "container.googleapis.com/Cluster", "iam.googleapis.com/ServiceAccount", "sqladmin.googleapis.com/Instance"],
 }
 
 
