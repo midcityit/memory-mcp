@@ -1,0 +1,9 @@
+{"provider": "grafana", "types": [
+  {"type": "Instance", "kind": "observability", "aliases": []},
+  {"type": "Folder", "kind": "observability", "aliases": ["grafana_folder"]},
+  {"type": "Dashboard", "kind": "observability", "aliases": ["grafana_dashboard"]},
+  {"type": "Datasource", "kind": "observability", "aliases": ["grafana_data_source"]},
+  {"type": "AlertRule", "kind": "observability", "aliases": ["grafana_rule_group"]},
+  {"type": "ContactPoint", "kind": "observability", "aliases": ["grafana_contact_point"]},
+  {"type": "NotificationPolicy", "kind": "observability", "aliases": ["grafana_notification_policy"]}
+]}

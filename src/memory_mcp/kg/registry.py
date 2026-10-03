@@ -13,6 +13,9 @@ from memory_mcp.kg.models import KGError
 
 PROVIDERS = ("azure", "aws", "gcp", "vmware", "hyperv", "cloudflare", "kubernetes", "grafana", "prometheus",
              "netbox", "logical")
+KINDS = ("compute", "container", "network", "dns", "edge", "database", "storage", "identity",
+         "security", "secret", "observability", "messaging", "analytics", "ai", "integration",
+         "org", "host", "work", "inventory", "other")
 GRAPH_ID_RE = re.compile(r"^[a-z][a-z0-9_]{1,31}$")
 _PKG = Path(__file__).parent
 

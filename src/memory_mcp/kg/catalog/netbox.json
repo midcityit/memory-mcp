@@ -1,0 +1,14 @@
+{"provider": "netbox", "types": [
+  {"type": "dcim.site", "kind": "inventory", "aliases": ["netbox_site"]},
+  {"type": "dcim.rack", "kind": "inventory", "aliases": ["netbox_rack"]},
+  {"type": "dcim.device", "kind": "inventory", "aliases": ["netbox_device"]},
+  {"type": "dcim.interface", "kind": "inventory", "aliases": ["netbox_device_interface"]},
+  {"type": "ipam.prefix", "kind": "inventory", "aliases": ["netbox_prefix"]},
+  {"type": "ipam.ipaddress", "kind": "inventory", "aliases": ["netbox_ip_address"]},
+  {"type": "ipam.vlan", "kind": "inventory", "aliases": ["netbox_vlan"]},
+  {"type": "ipam.vrf", "kind": "inventory", "aliases": ["netbox_vrf"]},
+  {"type": "virtualization.cluster", "kind": "inventory", "aliases": ["netbox_cluster"]},
+  {"type": "virtualization.virtualmachine", "kind": "inventory", "aliases": ["netbox_virtual_machine"]},
+  {"type": "tenancy.tenant", "kind": "inventory", "aliases": ["netbox_tenant"]},
+  {"type": "circuits.circuit", "kind": "inventory", "aliases": ["netbox_circuit"]}
+]}

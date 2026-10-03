@@ -1,0 +1,16 @@
+{"provider": "vmware", "types": [
+  {"type": "VirtualMachine", "kind": "compute", "aliases": ["vsphere_virtual_machine"]},
+  {"type": "HostSystem", "kind": "host", "aliases": ["vsphere_host"]},
+  {"type": "ClusterComputeResource", "kind": "host", "aliases": ["vsphere_compute_cluster"]},
+  {"type": "Datastore", "kind": "storage", "aliases": ["vsphere_vmfs_datastore", "vsphere_nas_datastore"]},
+  {"type": "DistributedVirtualPortgroup", "kind": "network", "aliases": ["vsphere_distributed_port_group"]},
+  {"type": "DistributedVirtualSwitch", "kind": "network", "aliases": ["vsphere_distributed_virtual_switch"]},
+  {"type": "Network", "kind": "network", "aliases": []},
+  {"type": "Datacenter", "kind": "org", "aliases": ["vsphere_datacenter"]},
+  {"type": "Folder", "kind": "org", "aliases": ["vsphere_folder"]},
+  {"type": "ResourcePool", "kind": "org", "aliases": ["vsphere_resource_pool"]},
+  {"type": "VirtualApp", "kind": "compute", "aliases": ["vsphere_vapp_container"]},
+  {"type": "Segment", "kind": "network", "aliases": ["nsxt_policy_segment"]},
+  {"type": "Tier0Gateway", "kind": "network", "aliases": ["nsxt_policy_tier0_gateway"]},
+  {"type": "Tier1Gateway", "kind": "network", "aliases": ["nsxt_policy_tier1_gateway"]}
+]}

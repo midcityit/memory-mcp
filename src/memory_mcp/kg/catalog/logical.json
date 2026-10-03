@@ -1,0 +1,11 @@
+{"provider": "logical", "types": [
+  {"type": "workload", "kind": "compute", "aliases": []},
+  {"type": "repo", "kind": "work", "aliases": ["github_repository"]},
+  {"type": "pipeline", "kind": "work", "aliases": []},
+  {"type": "tf_workspace", "kind": "work", "aliases": ["tfe_workspace"]},
+  {"type": "jira_issue", "kind": "work", "aliases": []},
+  {"type": "confluence_page", "kind": "work", "aliases": []},
+  {"type": "person", "kind": "org", "aliases": []},
+  {"type": "agent", "kind": "org", "aliases": []},
+  {"type": "site", "kind": "org", "aliases": []}
+]}
