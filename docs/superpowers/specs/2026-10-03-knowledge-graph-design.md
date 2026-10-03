@@ -386,7 +386,7 @@ All of the following must hold:
    - Record only topology you have verified; attach `evidence_memory_ids`.
    - Use `kg_xref` when one graph's work reuses another's pattern.
 6. Tracking: epic RCL-30. **Sprint 1** (2026-10-05 → 10-16) covers steps 1–2: built and passing on dev (RCL-41, RCL-31…RCL-38). **Sprint 2** (2026-10-19 → 10-30) covers steps 3–5 and 7: prod (RCL-39), agent adoption (RCL-40), visualization (RCL-42).
-7. **memory-ui visualization (RCL-42):** a read-only `/graph` explorer in `midcityit/memory-ui` using the §8 REST routes server-side. It has explore, impact, path and `as_of` views, an entity panel linking to memories, and an overview landing page. Library and any UI-specific endpoint are settled in a short design pass at the start of RCL-42 (Cytoscape.js is the leading candidate).
+7. **memory-ui visualization (RCL-42):** a read-only `/graph` explorer in `midcityit/memory-ui` using the §8 REST routes server-side. It has explore, impact, path and `as_of` views, an entity panel linking to memories, and an overview landing page. **Library: Cytoscape.js** (decided 2026-10-03: compound nodes for containment, dagre/fcose layouts). Layout/styling details and any UI-specific endpoint are settled in a short design pass at the start of RCL-42.
 
 ---
 
