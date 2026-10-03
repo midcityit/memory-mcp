@@ -179,25 +179,54 @@ class KGService:
         errors, prepared = [], []
         for i, item in enumerate(entities or []):
             try:
+                # Shape validation: must be dict
+                if not isinstance(item, dict):
+                    raise KGError("invalid_native_id", f"entities[{i}] must be an object", field=None)
+                # Validate required string fields
+                for field in ("provider", "type", "native_id"):
+                    val = item.get(field)
+                    if val is not None and not isinstance(val, str):
+                        raise KGError("invalid_native_id", f"{field} must be a string, got {type(val).__name__}", field=field)
+                # Validate optional string fields
+                for field in ("display_name",):
+                    val = item.get(field)
+                    if val is not None and not isinstance(val, str):
+                        raise KGError("invalid_native_id", f"{field} must be a string, got {type(val).__name__}", field=field)
                 prepared.append(self._prepare_entity(graph, agent=item.get("agent", agent),
                                                      **{k: item.get(k) for k in ENTITY_FIELDS}))
             except KGError as ex:
                 errors.append({"item": f"entities[{i}]", **ex.to_dict()})
-            except TypeError as ex:
+            except (TypeError, AttributeError, ValueError) as ex:
                 errors.append({"item": f"entities[{i}]", "error": "invalid_native_id", "message": str(ex),
                                "field": None, "suggestions": []})
         pending = {e.key: e for e in prepared}
         for i, item in enumerate(edges or []):
             try:
+                # Shape validation: must be dict
+                if not isinstance(item, dict):
+                    raise KGError("endpoint_not_found", f"edges[{i}] must be an object", field=None)
+                # Validate required string fields
+                for field in ("src", "dst", "relation"):
+                    val = item.get(field)
+                    if val is None:
+                        if field == "relation":
+                            raise KGError("unknown_relation", f"missing {field!r}", field=field)
+                        else:
+                            raise KGError("endpoint_not_found", f"missing {field!r}", field=field)
+                    if not isinstance(val, str):
+                        if field == "relation":
+                            raise KGError("unknown_relation", f"{field} must be a string, got {type(val).__name__}", field=field)
+                        else:
+                            raise KGError("endpoint_not_found", f"{field} must be a string, got {type(val).__name__}", field=field)
                 _check_iso(item.get("valid_from"), "valid_from")
                 _check_iso(item.get("valid_to"), "valid_to")
                 self._check_edge(graph, item["src"], item["relation"], item["dst"],
                                  current=not item.get("valid_to"), pending=pending)
             except KGError as ex:
                 errors.append({"item": f"edges[{i}]", **ex.to_dict()})
-            except KeyError as ex:
-                errors.append({"item": f"edges[{i}]", "error": "endpoint_not_found", "message": f"missing {ex}",
-                               "field": str(ex).strip("'"), "suggestions": []})
+            except (TypeError, AttributeError, KeyError, ValueError) as ex:
+                errors.append({"item": f"edges[{i}]", "error": "endpoint_not_found", "message": str(ex),
+                               "field": None, "suggestions": []})
         if errors:
             for er in errors:
                 count_error(er["error"])

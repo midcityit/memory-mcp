@@ -163,3 +163,28 @@ def test_xref(svc):
     with pytest.raises(KGError) as e:
         svc.xref("vtv::logical:VTV-999", "pattern_from", "mcit::logical:MCIT-184", "x")
     assert e.value.code == "endpoint_not_found"
+
+
+def test_batch_collects_shape_errors_for_all_items(svc, gstore):
+    bad_ents = [
+        "oops",  # non-dict item
+        {"provider": "kubernetes", "type": "core/Node", "native_id": 5, "display_name": "bad-id"},  # native_id is int
+        {"provider": "kubernetes", "type": "core/Node", "native_id": "mcit-k8s/_cluster/core/Node/ok", "display_name": "ok"},  # valid
+    ]
+    bad_edges = [
+        {"src": None, "relation": "runs_on", "dst": "kubernetes:mcit-k8s/_cluster/core/Node/opi-5"},  # src is None
+        {"src": "kubernetes:mcit-k8s/_cluster/core/Node/opi-5", "relation": 7, "dst": "kubernetes:mcit-k8s/_cluster/core/Node/opi-6"},  # relation is int
+    ]
+    r = svc.batch("mcit", bad_ents, bad_edges)
+    assert r["status"] == "rejected" and r["written"] == []
+    assert len(r["errors"]) == 4
+    # Check all errors are present with correct codes
+    error_items = {e["item"]: e["error"] for e in r["errors"]}
+    assert error_items == {
+        "entities[0]": "invalid_native_id",
+        "entities[1]": "invalid_native_id",
+        "edges[0]": "endpoint_not_found",
+        "edges[1]": "unknown_relation",
+    }
+    # Verify no entities were written
+    assert list(gstore.iter_entities("mcit")) == []
