@@ -52,6 +52,7 @@ def run(client: httpx.Client, env: Mapping[str, str], check_latency: bool = True
     DEP = "kubernetes:mcit-k8s/digital-twin/apps/Deployment/memory-mcp"
     OPI = "kubernetes:mcit-k8s/_cluster/core/Node/opi-5"
     MS01SVC = "kubernetes:ms01-k8s/digital-twin/core/Service/memory-mcp"
+    MS01QDRANT = "kubernetes:ms01-k8s/digital-twin/apps/StatefulSet/qdrant"
     PV = f"kubernetes:ms01-k8s/_cluster/core/PersistentVolume/{v['MS01_QDRANT_PV']}"
     AKS = f"azure:{v['VTV_AKS_ID_LC']}"
     AMW = f"azure:{v['MCIT_AMW_ID_LC']}"
@@ -101,7 +102,9 @@ def run(client: httpx.Client, env: Mapping[str, str], check_latency: bool = True
         r = client.post("/kg/mcit/impact", json={"key": PV}).json()
         aff = {n["key"] for layer in r["affected"] for n in layer["nodes"]}
         bad = {k for k in aff if "mcit-k8s/" in k} | ({DNS} & aff)
-        return bool(aff) and not bad, f"affected={sorted(k.split('/')[-1] for k in aff)}"
+        non_ms01 = {k for k in aff if not k.startswith("kubernetes:ms01-k8s/")}
+        return (bool(aff) and not bad and not non_ms01 and MS01QDRANT in aff,
+                f"affected={sorted(k.split('/')[-1] for k in aff)}")
     check("4 ms01 PV blast radius is ms01-only (MCIT-251 evidence)", c4)
 
     def c5():

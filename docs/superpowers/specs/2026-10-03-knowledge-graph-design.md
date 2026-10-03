@@ -36,7 +36,7 @@ The acceptance scenario in §10 is the definition of done.
 | How data gets in | **Agents write it** through explicit tools. No LLM extraction, no live ingestion in v1 |
 | Schema strictness | **Controlled and extensible**: server-side registry, unknown values rejected with suggestions, extended through config |
 | History | **Soft-retire**: `valid_from` / `valid_to` on edges and entities; queries default to now and support `as_of` |
-| Storage | **Qdrant-native** collections behind a `GraphStore` interface (no new infrastructure) |
+| Storage | **Qdrant-native** collections behind `QdrantGraphStore`'s method set (no new infrastructure) |
 | Type coverage | **Every resource type** for Azure, AWS, GCP, VMware, Hyper-V and Cloudflare, plus Kubernetes and logical types, using provider-native types from generated catalogs |
 | Observability & inventory (amended 2026-10-03) | **Grafana, Prometheus and NetBox are first-class providers**, keyed by their own native IDs; self-hosted and managed (Azure/AWS) instances use the same model. Managed services (CloudWatch, Azure Monitor/Managed Grafana/Prometheus, AWS Managed Prometheus/Grafana) come from the cloud catalogs as `observability`. NetBox sync stays out of v1 |
 | Multiple graphs | **Independent graphs** (`vtv`, `mcit`, …), physically isolated, queryable together, linked only by reference-class cross-graph links |
@@ -262,7 +262,7 @@ An edge or entity is **current at `t`** when `valid_from ≤ t` and (`valid_to` 
 
 - Compact node form: `{graph?, key, display_name, kind, type_short}`.
 - Default `max_chars` is 6000 (overridable per call).
-- When over budget, results are trimmed deepest-layer-first for traversals and from the tail for lists; the response gets `truncated: true` and a `cursor`, and is always valid JSON.
+- When over budget, results are trimmed deepest-layer-first for traversals and from the tail for lists; the response gets `truncated: true` (list responses such as `kg_find` also get a `cursor`; traversals have none), and is always valid JSON.
 
 ---
 
@@ -305,7 +305,7 @@ src/memory_mcp/
     models.py           # Entity, Edge, XRef dataclasses; FQ key helpers
     registry.py         # graphs, relations, catalogs; type resolution + suggestions
     ids.py              # per-provider native-ID validation/normalization/type extraction
-    store.py            # GraphStore Protocol + QdrantGraphStore
+    store.py            # QdrantGraphStore
     service.py          # validation pipeline + write operations (used by tools and REST)
     query.py            # resolve, traverse, path, impact, overview, related_across, budget trimming
     tools.py            # MCP tool bindings (thin)
