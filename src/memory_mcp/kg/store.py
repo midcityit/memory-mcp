@@ -180,6 +180,25 @@ class QdrantGraphStore:
     def edges_to(self, graph, keys, relations=None, at_ts=None, include_retired=False) -> list[Edge]:
         return self._edges_by("dst", graph, keys, relations, at_ts, include_retired)
 
+    def edges_touching(self, graph, keys, relations=None, at_ts=None, include_retired=False) -> list[Edge]:
+        """Edges whose src OR dst is in `keys`, in a single Qdrant query per chunk.
+
+        Used by traverse(direction="both") to halve the edge round-trips vs calling
+        edges_from + edges_to separately (one scroll instead of two per hop).
+        """
+        out: list[Edge] = []
+        keys = list(dict.fromkeys(keys))
+        for i in range(0, len(keys), FRONTIER_CHUNK):
+            chunk = keys[i:i + FRONTIER_CHUNK]
+            endpoint = Filter(should=[FieldCondition(key="src", match=MatchAny(any=chunk)),
+                                      FieldCondition(key="dst", match=MatchAny(any=chunk))])
+            must = [endpoint]
+            if relations:
+                must.append(FieldCondition(key="relation", match=MatchAny(any=list(relations))))
+            must += _time_conditions(at_ts, include_retired)
+            out += [Edge.from_payload(p.payload) for p in self._scroll_all(edges_collection(graph), Filter(must=must))]
+        return out
+
     def current_edge(self, graph: str, src: str, relation: str, dst: str) -> Edge | None:
         flt = Filter(must=[_eq("src", src), _eq("relation", relation), _eq("dst", dst),
                            IsNullCondition(is_null=PayloadField(key="valid_to_ts"))])
