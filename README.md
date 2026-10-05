@@ -197,12 +197,17 @@ Optional infrastructure knowledge graph (topology, blast radius, time-travel) st
 
 ### KG tools
 
+Not sure which `(provider, type)` to use? Call **`kg_catalog`** first — it lists every supported provider, type, kind, alias and relation so you never have to guess.
+
 | Tool | Purpose |
 |------|---------|
+| `kg_catalog` | Discover supported providers, the `(provider → type/kind/aliases)` catalog, relations (with kind constraints), graphs and kinds; filter by `provider`/`kind`/`search` |
 | `kg_upsert_entity` | Create/update an entity (provider, type, native ID); call `kg_resolve` first to reuse keys |
 | `kg_link` | Create/refresh a topology edge between two current entities in one graph |
 | `kg_unlink` | Soft-retire a current edge (history kept) when something moves or is reconfigured |
-| `kg_retire_entity` | Soft-retire an entity and all its current edges (decommission) |
+| `kg_retire_entity` | Soft-retire an entity and all its current edges (decommission) — **preferred over delete** |
+| `kg_delete_entity` | Hard-delete (purge) an entity, its edges and any touching xrefs; irreversible, requires `confirm=true` |
+| `kg_delete_xref` | Hard-delete a cross-graph reference (e.g. clean up one orphaned when both endpoints were deleted) |
 | `kg_batch` | Record a whole topology at once (validated first, safe to re-run) |
 | `kg_xref` | Cross-graph reference between fully qualified keys (`pattern_from`, `lessons_from`, ...) |
 | `kg_resolve` | Find entity keys by name, alias, native ID or description |
@@ -217,9 +222,10 @@ Optional infrastructure knowledge graph (topology, blast radius, time-travel) st
 
 ### Agent rules
 
-- Call `kg_resolve` before writing; reuse existing keys.
+- Call `kg_catalog` when unsure what a provider supports; call `kg_resolve` before writing and reuse existing keys.
 - Call `kg_batch` after a verified `terraform apply`, migration or deployment.
-- Call `kg_retire_entity` / `kg_unlink` on decommission or move; never hard-delete.
+- Call `kg_retire_entity` / `kg_unlink` on decommission or move — this is the normal path and keeps history.
+- Reserve `kg_delete_entity` / `kg_delete_xref` for erroneous or test data, or cleaning up orphaned xrefs; both are irreversible and `kg_delete_entity` needs `confirm=true`.
 - Record only topology you have verified; attach `evidence_memory_ids`.
 - Use `kg_xref` when one graph's work reuses another's pattern.
 
