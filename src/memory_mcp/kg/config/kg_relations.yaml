@@ -1,6 +1,10 @@
 relations:
   runs_on:          {inverse: runs,            impact: propagates, src_kinds: [compute, container], dst_kinds: [compute, container, host, org]}
   hosted_on:        {inverse: hosts,           impact: propagates, src_kinds: [compute, container], dst_kinds: [compute, host]}
+  # VM / k8s Node (kind host or compute) running on a hypervisor host (RCL-55):
+  # runs_on/hosted_on only accept compute|container sources, so a host-on-host
+  # (e.g. Hyper-V VM, or a k8s Node that is itself kind host) was unmodellable.
+  virtualized_on:   {inverse: virtualizes,     impact: propagates, src_kinds: [host, compute], dst_kinds: [host]}
   member_of:        {inverse: has_member}
   contains:         {inverse: contained_in}
   depends_on:       {inverse: dependency_of,   impact: propagates}
