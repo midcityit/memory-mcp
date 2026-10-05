@@ -254,3 +254,13 @@ class QdrantGraphStore:
             self.client.set_payload(XREFS, payload={"dangling": True},
                                     points=[xref_point_id(x.src, x.relation, x.dst)])
         return len(xs)
+
+    def delete_xref(self, src: str, relation: str, dst: str) -> None:
+        self.client.delete(XREFS, points_selector=PointIdsList(points=[xref_point_id(src, relation, dst)]))
+
+    def delete_xrefs_touching(self, fq: str) -> int:
+        xs = self.xrefs_touching(fq)
+        if xs:
+            self.client.delete(XREFS, points_selector=PointIdsList(
+                points=[xref_point_id(x.src, x.relation, x.dst) for x in xs]))
+        return len(xs)
