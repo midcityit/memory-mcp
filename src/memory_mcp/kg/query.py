@@ -89,10 +89,21 @@ class KGQuery:
 
     def _neighbors(self, graph, keys, direction, relations, at_ts):
         """Yield (from_key, to_key, edge) for edges touching `keys` in the given direction."""
-        if direction in ("out", "both"):
+        if direction == "both":
+            # Single Qdrant query (src OR dst in keys) instead of two, to halve
+            # per-hop round-trips. Classify each edge by which endpoint is in the
+            # frontier; an edge with both ends in the frontier yields both ways.
+            kset = set(keys)
+            for e in self.store.edges_touching(graph, keys, relations, at_ts):
+                if e.src in kset:
+                    yield e.src, e.dst, e
+                if e.dst in kset:
+                    yield e.dst, e.src, e
+            return
+        if direction == "out":
             for e in self.store.edges_from(graph, keys, relations, at_ts):
                 yield e.src, e.dst, e
-        if direction in ("in", "both"):
+        if direction == "in":
             for e in self.store.edges_to(graph, keys, relations, at_ts):
                 yield e.dst, e.src, e
 

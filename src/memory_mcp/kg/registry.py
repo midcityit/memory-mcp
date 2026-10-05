@@ -137,3 +137,43 @@ class Registry:
 
     def propagating_relations(self) -> list[str]:
         return sorted(n for n, r in self.relations.items() if r.impact == "propagates")
+
+    def describe_catalog(self, provider: str | None = None, kind: str | None = None,
+                         search: str | None = None, max_types: int = 200) -> dict:
+        """Surface the supported providers, type catalog, relations, graphs and kinds so agents
+        don't have to guess (addresses the KG Unsupported Resource Types Tracker open question).
+        Optionally filter the type listing by provider, kind, or a case-insensitive substring."""
+        if provider is not None:
+            self.require_provider(provider)
+        s = search.lower() if search else None
+        providers_out = {}
+        truncated = {}
+        for prov in (([provider] if provider else list(PROVIDERS))):
+            rows = []
+            for td in self.types.get(prov, {}).values():
+                if kind and td.kind != kind:
+                    continue
+                if s and s not in td.type.lower() and not any(s in a.lower() for a in td.aliases):
+                    continue
+                rows.append({"type": td.type, "kind": td.kind, "aliases": list(td.aliases)})
+            rows.sort(key=lambda r: r["type"])
+            if len(rows) > max_types:
+                truncated[prov] = len(rows)
+                rows = rows[:max_types]
+            providers_out[prov] = rows
+        out = {
+            "providers": sorted(PROVIDERS),
+            "kinds": sorted(KINDS),
+            "graphs": sorted(self.graphs),
+            "relations": {
+                n: {"inverse": r.inverse, "class": r.cls, "impact": r.impact,
+                    "src_kinds": sorted(r.src_kinds) if r.src_kinds else None,
+                    "dst_kinds": sorted(r.dst_kinds) if r.dst_kinds else None}
+                for n, r in sorted(self.relations.items())
+            },
+            "types": providers_out,
+            "type_counts": {p: len(self.types.get(p, {})) for p in sorted(PROVIDERS)},
+        }
+        if truncated:
+            out["truncated"] = {p: {"shown": max_types, "total": n} for p, n in truncated.items()}
+        return out
