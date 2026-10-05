@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-from memory_mcp.kg.models import KGError, fq_key
+from memory_mcp.kg.models import KGError
 from memory_mcp.kg.service import EDGE_FIELDS, ENTITY_FIELDS, count_error
 
 _404 = {"not_found", "endpoint_not_found", "unknown_graph"}
@@ -67,6 +67,10 @@ def build_router(service, query, require_token: Callable) -> APIRouter:
     @r.get("/graphs")
     def graphs():
         return {"graphs": service.reg.graphs}
+
+    @r.get("/catalog")
+    def catalog(provider: str | None = None, kind: str | None = None, search: str | None = None):
+        return _run(service.reg.describe_catalog, provider, kind, search)
 
     @r.get("/overview")
     def overview(graphs: str = "*"):
@@ -155,14 +159,13 @@ def build_router(service, query, require_token: Callable) -> APIRouter:
 
     @r.delete("/{graph}/entities/{key:path}")
     def delete_entity(graph: str, key: str, hard: bool = False):
-        _run(service.reg.require_graph, graph)
         if not hard:
             raise HTTPException(400, detail={"error": "hard_required",
                                              "message": "Use kg_retire_entity to decommission; pass hard=true to purge"})
-        if store.get_entity(graph, key) is None:
-            raise HTTPException(404, detail={"error": "not_found", "message": key})
-        removed = store.delete_entity_hard(graph, key)
-        store.mark_xrefs_dangling(fq_key(graph, key))
-        return {"deleted": key, "edges_removed": removed}
+        return _run(service.delete_entity, graph, key, True)
+
+    @r.delete("/xref")
+    def delete_xref(src: str, relation: str, dst: str):
+        return _run(service.delete_xref, src, relation, dst)
 
     return r

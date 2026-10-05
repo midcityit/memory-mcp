@@ -7,7 +7,7 @@ from opentelemetry import metrics
 
 from memory_mcp.kg.ids import normalize_native_id
 from memory_mcp.kg.models import (
-    Edge, Entity, KGError, XRef, iso_to_ts, make_key, now_iso, split_fq,
+    Edge, Entity, KGError, XRef, fq_key, iso_to_ts, make_key, now_iso, split_fq,
 )
 from memory_mcp.kg.store import EntityFilter
 
@@ -248,6 +248,32 @@ class KGService:
         self.store.upsert_entity(graph, replace(e, valid_to=now, updated_at=now))
         _writes.add(1, {"graph": graph, "op": "retire_entity"})
         return {"key": key, "status": "retired", "edges_retired": len(edges)}
+
+    def delete_entity(self, graph, key, confirm=False) -> dict:
+        """Hard-delete (purge) an entity, its edges, and any xrefs touching it. Irreversible —
+        prefer retire_entity. Guarded by an explicit confirm flag."""
+        self.reg.require_graph(graph)
+        if not confirm:
+            raise KGError("confirm_required",
+                          "Hard delete is irreversible; prefer kg_retire_entity. Pass confirm=true to purge.",
+                          field="confirm")
+        if self.store.get_entity(graph, key) is None:
+            raise KGError("not_found", f"No entity '{key}' in graph '{graph}'", field="key",
+                          suggestions=["kg_resolve to find the right key"])
+        edges_removed = self.store.delete_entity_hard(graph, key)
+        xrefs_removed = self.store.delete_xrefs_touching(fq_key(graph, key))
+        _writes.add(1, {"graph": graph, "op": "delete_entity"})
+        return {"key": key, "status": "deleted", "edges_removed": edges_removed, "xrefs_removed": xrefs_removed}
+
+    def delete_xref(self, src, relation, dst) -> dict:
+        """Hard-delete a cross-graph reference (RCL-54: no delete path existed before)."""
+        self.reg.relation(relation)  # validate relation name exists
+        if self.store.get_xref(src, relation, dst) is None:
+            raise KGError("not_found", f"No xref {src} -{relation}-> {dst}", field="relation",
+                          suggestions=["kg_get_entity to list xrefs touching an endpoint"])
+        self.store.delete_xref(src, relation, dst)
+        _writes.add(1, {"graph": src.split("::", 1)[0], "op": "delete_xref"})
+        return {"src": src, "relation": relation, "dst": dst, "status": "deleted"}
 
     # ── batch ────────────────────────────────────────────────────────────────
     def batch(self, graph, entities, edges, agent="claude-code") -> dict:

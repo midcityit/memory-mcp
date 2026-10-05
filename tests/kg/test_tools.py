@@ -7,7 +7,8 @@ from mcp.server.mcpserver import MCPServer
 from memory_mcp.kg.query import KGQuery
 from memory_mcp.kg.tools import register
 
-TOOLS = {"kg_upsert_entity", "kg_link", "kg_unlink", "kg_retire_entity", "kg_batch", "kg_xref",
+TOOLS = {"kg_upsert_entity", "kg_link", "kg_unlink", "kg_retire_entity", "kg_delete_entity", "kg_delete_xref",
+         "kg_catalog", "kg_batch", "kg_xref",
          "kg_resolve", "kg_get_entity", "kg_find", "kg_traverse", "kg_path", "kg_impact", "kg_overview",
          "kg_related_across", "kg_for_memory"}
 
@@ -24,8 +25,26 @@ def call(s, name, **args):
     return json.loads(r.content[0].text)
 
 
-def test_registers_exactly_15_tools(server):
+def test_registers_exactly_18_tools(server):
     assert {t.name for t in asyncio.run(server.list_tools())} == TOOLS
+
+
+def test_delete_and_catalog_tools(server):
+    # catalog surfaces providers/types without guessing
+    cat = call(server, "kg_catalog", provider="logical", search="principal")
+    assert [t["type"] for t in cat["types"]["logical"]] == ["service_principal"]
+    # hard delete requires confirm, then purges
+    call(server, "kg_upsert_entity", graph="mcit", provider="logical", type="jira_issue", native_id="MCIT-7")
+    guard = call(server, "kg_delete_entity", graph="mcit", key="logical:MCIT-7")
+    assert guard["error"] == "confirm_required"
+    done = call(server, "kg_delete_entity", graph="mcit", key="logical:MCIT-7", confirm=True)
+    assert done["status"] == "deleted"
+    # xref delete
+    call(server, "kg_upsert_entity", graph="mcit", provider="logical", type="jira_issue", native_id="MCIT-8")
+    call(server, "kg_upsert_entity", graph="vtv", provider="logical", type="jira_issue", native_id="VTV-8")
+    call(server, "kg_xref", src="vtv::logical:VTV-8", relation="pattern_from", dst="mcit::logical:MCIT-8", note="p")
+    assert call(server, "kg_delete_xref", src="vtv::logical:VTV-8", relation="pattern_from",
+                dst="mcit::logical:MCIT-8")["status"] == "deleted"
 
 
 def test_write_then_read_round_trip(server):

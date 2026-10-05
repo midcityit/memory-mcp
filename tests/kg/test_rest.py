@@ -119,13 +119,34 @@ async def test_export_import_round_trip(seeded, kg_registry, gstore, stub_embedd
     assert all(w["status"] in ("updated", "retired", "recorded") for w in again["written"])
 
 
-async def test_hard_delete_requires_flag_and_marks_xrefs(seeded, kg_registry, gstore):
+async def test_hard_delete_requires_flag_and_purges_xrefs(seeded, kg_registry, gstore):
     async with client(make_app(seeded, kg_registry, gstore)) as c:
         soft = await c.delete("/kg/mcit/entities/logical:MCIT-184")
         hard = await c.delete("/kg/mcit/entities/logical:MCIT-184", params={"hard": "true"})
     assert soft.status_code == 400
-    assert hard.status_code == 200 and hard.json()["deleted"] == "logical:MCIT-184"
-    assert gstore.xrefs_touching("mcit::logical:MCIT-184")[0].dangling is True
+    assert hard.status_code == 200 and hard.json()["key"] == "logical:MCIT-184" and hard.json()["status"] == "deleted"
+    # xrefs touching the deleted entity are purged, not left dangling (RCL-54)
+    assert gstore.xrefs_touching("mcit::logical:MCIT-184") == []
+
+
+async def test_catalog_route(seeded, kg_registry, gstore):
+    async with client(make_app(seeded, kg_registry, gstore)) as c:
+        r = await c.get("/kg/catalog", params={"provider": "logical", "search": "principal"})
+    assert r.status_code == 200
+    body = r.json()
+    assert [t["type"] for t in body["types"]["logical"]] == ["service_principal"]
+    assert body["relations"]["virtualized_on"]["inverse"] == "virtualizes"
+
+
+async def test_delete_xref_route(seeded, kg_registry, gstore):
+    seeded.xref("vtv::logical:VTV-238", "pattern_from", "mcit::logical:MCIT-184", "pattern")
+    async with client(make_app(seeded, kg_registry, gstore)) as c:
+        ok = await c.delete("/kg/xref", params={"src": "vtv::logical:VTV-238", "relation": "pattern_from",
+                                                 "dst": "mcit::logical:MCIT-184"})
+        missing = await c.delete("/kg/xref", params={"src": "vtv::logical:VTV-238", "relation": "pattern_from",
+                                                     "dst": "mcit::logical:MCIT-184"})
+    assert ok.status_code == 200 and ok.json()["status"] == "deleted"
+    assert missing.status_code == 404
 
 
 ENT_LINE = json.dumps({"record": "entity", "provider": "logical", "type": "jira_issue", "native_id": "MCIT-999"})

@@ -41,3 +41,30 @@ def test_check_kinds(reg):
     with pytest.raises(KGError) as e:
         reg.check_kinds(reg.relation("tracked_in"), "container", "network")
     assert e.value.code == "kind_constraint"
+
+
+def test_logical_identity_and_infra_types(reg):
+    # Entra/Graph-only objects + endpoints + fleet, added to close the KG
+    # unsupported-types tracker gaps (service principals had no representation).
+    assert reg.resolve_type("logical", "service_principal").kind == "identity"
+    assert reg.resolve_type("logical", "servicePrincipal").type == "service_principal"
+    assert reg.resolve_type("logical", "sp").type == "service_principal"
+    assert reg.resolve_type("logical", "app_registration").kind == "identity"
+    assert reg.resolve_type("logical", "directory_role").kind == "identity"
+    assert reg.resolve_type("logical", "group").kind == "identity"
+    assert reg.resolve_type("logical", "device").kind == "compute"
+    assert reg.resolve_type("logical", "fleet").kind == "org"
+    # "ticket" alias implied by the tool description ("Jira key") now resolves.
+    assert reg.resolve_type("logical", "ticket").type == "jira_issue"
+
+
+def test_virtualized_on_host_on_host(reg):
+    # RCL-55: VM / k8s-Node (kind host) on a hypervisor host was unmodellable
+    # because runs_on/hosted_on only accept compute|container sources.
+    rel = reg.relation("virtualized_on")
+    assert rel.inverse == "virtualizes" and rel.impact == "propagates"
+    reg.check_kinds(rel, "host", "host")       # k8s Node / Hyper-V VM on hypervisor
+    reg.check_kinds(rel, "compute", "host")    # a VM compute entity on hypervisor
+    with pytest.raises(KGError) as e:
+        reg.check_kinds(rel, "network", "host")
+    assert e.value.code == "kind_constraint"

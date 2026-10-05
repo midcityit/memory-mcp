@@ -112,6 +112,23 @@ def test_traverse_depth_kinds_and_as_of(q):
     assert MS01 in keys(past["nodes"]) and OPI not in keys(past["nodes"])
 
 
+def test_edges_touching_equals_from_plus_to_and_both_matches(svc, kg_registry, gstore):
+    # edges_touching (one query, src OR dst) must equal edges_from + edges_to (deduped),
+    # and a both-direction traverse must find the same neighbors either way.
+    a = svc.upsert_entity("mcit", "logical", "workload", "ta", display_name="ta")["key"]
+    b = svc.upsert_entity("mcit", "logical", "workload", "tb", display_name="tb")["key"]
+    c = svc.upsert_entity("mcit", "logical", "workload", "tc", display_name="tc")["key"]
+    svc.link("mcit", a, "depends_on", b)   # a -> b (a is src)
+    svc.link("mcit", c, "depends_on", a)   # c -> a (a is dst)
+    frm = gstore.edges_from("mcit", [a])
+    to = gstore.edges_to("mcit", [a])
+    touch = gstore.edges_touching("mcit", [a])
+    sig = lambda es: {(e.src, e.relation, e.dst, e.valid_from) for e in es}
+    assert sig(touch) == sig(frm) | sig(to)
+    r = KGQuery(kg_registry, gstore).traverse("mcit", a, max_depth=1, direction="both")
+    assert sorted(n["key"] for n in r["nodes"]) == sorted([a, b, c])
+
+
 def test_traverse_cycle_terminates_without_duplicates(svc, kg_registry, gstore):
     a = svc.upsert_entity("mcit", "logical", "workload", "wa", display_name="a")["key"]
     b = svc.upsert_entity("mcit", "logical", "workload", "wb", display_name="b")["key"]

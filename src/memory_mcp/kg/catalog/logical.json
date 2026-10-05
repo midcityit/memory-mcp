@@ -3,9 +3,15 @@
   {"type": "repo", "kind": "work", "aliases": ["github_repository"]},
   {"type": "pipeline", "kind": "work", "aliases": []},
   {"type": "tf_workspace", "kind": "work", "aliases": ["tfe_workspace"]},
-  {"type": "jira_issue", "kind": "work", "aliases": []},
+  {"type": "jira_issue", "kind": "work", "aliases": ["ticket"]},
   {"type": "confluence_page", "kind": "work", "aliases": []},
   {"type": "person", "kind": "org", "aliases": []},
   {"type": "agent", "kind": "org", "aliases": []},
-  {"type": "site", "kind": "org", "aliases": []}
+  {"type": "site", "kind": "org", "aliases": []},
+  {"type": "service_principal", "kind": "identity", "aliases": ["servicePrincipal", "sp"]},
+  {"type": "app_registration", "kind": "identity", "aliases": ["appRegistration", "application"]},
+  {"type": "directory_role", "kind": "identity", "aliases": ["entra_role", "aad_role"]},
+  {"type": "group", "kind": "identity", "aliases": ["security_group", "entra_group"]},
+  {"type": "device", "kind": "compute", "aliases": ["endpoint", "workstation"]},
+  {"type": "fleet", "kind": "org", "aliases": ["fleet_hub", "k8s_fleet"]}
 ]}
