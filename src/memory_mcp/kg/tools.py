@@ -53,8 +53,30 @@ def register(mcp, service, query) -> None:
 
     @mcp.tool()
     def kg_retire_entity(graph: str, key: str, reason: str) -> dict:
-        """Soft-retire an entity and all its current edges (decommission). Never hard-delete via agents."""
+        """Soft-retire an entity and all its current edges (decommission). Prefer this over hard delete;
+        history is preserved and the entity can be revived by upserting it again."""
         return _call("kg_retire_entity", graph, service.retire_entity, graph, key, reason)
+
+    @mcp.tool()
+    def kg_delete_entity(graph: str, key: str, confirm: bool = False) -> dict:
+        """Hard-delete (purge) an entity, its edges, and any cross-graph xrefs touching it. IRREVERSIBLE —
+        use kg_retire_entity for normal decommissioning. Requires confirm=true. Use to remove test/erroneous
+        entities, or to clean up an endpoint whose xrefs would otherwise be left dangling."""
+        return _call("kg_delete_entity", graph, service.delete_entity, graph, key, confirm)
+
+    @mcp.tool()
+    def kg_delete_xref(src: str, relation: str, dst: str) -> dict:
+        """Hard-delete a cross-graph reference ('{graph}::{key}' endpoints). Use to remove an erroneous xref or
+        clean up one left dangling after both endpoint entities were deleted (previously no delete path existed)."""
+        return _call("kg_delete_xref", None, service.delete_xref, src, relation, dst)
+
+    @mcp.tool()
+    def kg_catalog(provider: str | None = None, kind: str | None = None, search: str | None = None) -> dict:
+        """Discover what the graph supports: providers, the (provider -> type/kind/aliases) catalog, relations
+        (with their kind constraints), graphs, and valid kinds. Call this BEFORE guessing a (provider, type) pair.
+        Filter the type listing by provider, kind, or a case-insensitive substring (e.g. provider='azure',
+        search='servicePrincipal')."""
+        return _call("kg_catalog", None, service.reg.describe_catalog, provider, kind, search)
 
     @mcp.tool()
     def kg_batch(graph: str, entities: list[dict] | None = None, edges: list[dict] | None = None,
