@@ -33,6 +33,37 @@ def test_azure_child_and_scope_types():
     normalize_native_id("azure", RG, f"{SUB}/resourceGroups/rg")
 
 
+# RCL-60: extension / nested resources have a SECOND '/providers/' scope. The resource's
+# own type must be read from the segment after the LAST 'providers', not the first.
+ALERT_RULE = TypeDef("azure", "Microsoft.SecurityInsights/alertRules", "security")
+SSC_CLASS = TypeDef("azure", "Microsoft.SecretSyncController/azureKeyVaultSecretProviderClasses", "security")
+
+
+def test_azure_extension_resource_under_workspace():
+    # Case 1 from RCL-60: alert rule under a Log Analytics workspace.
+    nid = (f"{SUB}/resourceGroups/rg-sentinel/providers/Microsoft.OperationalInsights/workspaces/law-sentinel"
+           "/providers/Microsoft.SecurityInsights/alertRules/rule-1")
+    assert normalize_native_id("azure", ALERT_RULE, nid) == nid.lower()
+
+
+def test_azure_extension_resource_under_connected_cluster():
+    # Case 2 from RCL-60: secret-sync provider class under an Arc connected cluster.
+    nid = (f"{SUB}/resourceGroups/rg-infra/providers/Microsoft.Kubernetes/connectedClusters/mcit-k8s"
+           "/providers/Microsoft.SecretSyncController/azureKeyVaultSecretProviderClasses/spc-1")
+    assert normalize_native_id("azure", SSC_CLASS, nid) == nid.lower()
+
+
+def test_azure_extension_resource_mismatch_suggests_real_inner_type():
+    # The wrong type must get the REAL inner type as the suggestion, not a concatenation
+    # of the outer namespace with the inner type (the pre-fix nonsense).
+    nid = (f"{SUB}/resourceGroups/rg-sentinel/providers/Microsoft.OperationalInsights/workspaces/law-sentinel"
+           "/providers/Microsoft.SecurityInsights/alertRules/rule-1")
+    with pytest.raises(KGError) as e:
+        normalize_native_id("azure", VM, nid)
+    assert e.value.code == "type_id_mismatch"
+    assert e.value.suggestions == ["microsoft.securityinsights/alertrules"]
+
+
 def test_azure_type_id_mismatch():
     nic = f"{SUB}/resourceGroups/rg/providers/Microsoft.Network/networkInterfaces/nic1"
     with pytest.raises(KGError) as e:
