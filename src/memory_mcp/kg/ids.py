@@ -43,7 +43,13 @@ def _azure(td: TypeDef, nid: str) -> str:
     if rest is None:
         found = "microsoft.resources/resourcegroups" if "/resourcegroups/" in n else "microsoft.resources/subscriptions"
     else:
-        parts = rest.split("/")
+        # An extension / nested resource has a SECOND provider scope:
+        #   .../providers/{ns1}/{type1}/{name1}/providers/{ns2}/{type2}/{name2}
+        # The resource's own type comes from the segment after its OWN (last) 'providers'.
+        # `rest` is everything after the first 'providers/', so re-anchor on the last one.
+        segs = rest.split("/")
+        last_prov = max((i for i, s in enumerate(segs) if s == "providers"), default=-1)
+        parts = segs[last_prov + 1:] if last_prov >= 0 else segs
         if len(parts) < 3 or len(parts) % 2 == 0:
             raise _invalid("azure", nid, "providers/{namespace}/{type}/{name}[/{childType}/{childName}...]")
         found = parts[0] + "/" + "/".join(parts[1::2])
