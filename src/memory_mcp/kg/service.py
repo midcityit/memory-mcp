@@ -7,7 +7,7 @@ from opentelemetry import metrics
 
 from memory_mcp.kg.ids import normalize_native_id
 from memory_mcp.kg.models import (
-    Edge, Entity, KGError, XRef, fq_key, iso_to_ts, make_key, now_iso, split_fq,
+    Edge, Entity, KGError, XRef, fq_key, is_fq_key, iso_to_ts, make_key, now_iso, split_fq,
 )
 from memory_mcp.kg.store import EntityFilter
 
@@ -180,9 +180,9 @@ class KGService:
 
     # ── edges ────────────────────────────────────────────────────────────────
     def _check_edge(self, graph, src, relation, dst, current=True, pending=None):
-        if "::" in src or "::" in dst:
+        if is_fq_key(src) or is_fq_key(dst):
             raise KGError("cross_graph_edge", "Edges must stay within one graph; use kg_xref to reference another graph",
-                          field="dst" if "::" in dst else "src")
+                          field="dst" if is_fq_key(dst) else "src")
         rel = self.reg.relation(relation)
         if rel.cls != "topology":
             raise KGError("relation_class_mismatch", f"'{relation}' is a reference relation; use kg_xref", field="relation")
