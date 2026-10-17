@@ -1,11 +1,17 @@
 """Knowledge-graph data model, keys, time helpers and errors."""
 from __future__ import annotations
 
+import re
 import uuid
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 
 KG_NAMESPACE = uuid.UUID("6f1d3c52-2f0e-4c7a-9a43-0d6c4b3f2a11")
+
+# A graph id is a short lowercase token (see registry.GRAPH_ID_RE, re-exported there).
+# Kept here, the lowest layer, so key helpers can recognize a '{graph}::{key}' prefix
+# without importing the registry.
+GRAPH_ID_RE = re.compile(r"^[a-z][a-z0-9_]{1,31}$")
 
 
 def now_iso() -> str:
@@ -35,8 +41,21 @@ def fq_key(graph: str, key: str) -> str:
     return f"{graph}::{key}"
 
 
+def is_fq_key(s: str) -> bool:
+    """True iff `s` is a fully qualified key '{graph}::{key}'.
+
+    Only the segment before the FIRST '::' is considered the graph, and it must be a
+    valid graph id. This deliberately does NOT fire on a bare '::' appearing later in a
+    key — e.g. a global-service AWS ARN like 'aws:arn:aws:iam::123:role/x' whose region
+    (and account, for S3) segment is empty. Such keys live inside a single graph and
+    must not be mistaken for cross-graph references (RCL-61).
+    """
+    head, sep, _ = s.partition("::")
+    return bool(sep) and GRAPH_ID_RE.match(head) is not None
+
+
 def split_fq(fq: str) -> tuple[str, str]:
-    if "::" not in fq:
+    if not is_fq_key(fq):
         raise KGError("invalid_native_id", f"'{fq}' is not a fully qualified key ({{graph}}::{{key}})", field="key")
     graph, key = fq.split("::", 1)
     return graph, key
