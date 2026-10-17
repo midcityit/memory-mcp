@@ -1,6 +1,6 @@
 import pytest
 from memory_mcp.kg.models import (
-    Entity, Edge, KGError, make_key, fq_key, split_fq, entity_point_id, edge_point_id,
+    Entity, Edge, KGError, make_key, fq_key, split_fq, is_fq_key, entity_point_id, edge_point_id,
     iso_to_ts, is_current,
 )
 
@@ -15,6 +15,22 @@ def test_split_fq_rejects_unqualified():
     with pytest.raises(KGError) as e:
         split_fq("kubernetes:x")
     assert e.value.code == "invalid_native_id"
+
+
+def test_is_fq_key_only_fires_on_graph_prefix():
+    # Real fully-qualified keys: '{graph}::{key}'.
+    assert is_fq_key("mcit::kubernetes:x")
+    assert is_fq_key("vtv::aws:arn:aws:states:us-east-1:064025363976:stateMachine:x")
+    # Bare key, no graph prefix.
+    assert not is_fq_key("kubernetes:mcit-k8s/_cluster/core/Node/opi-5")
+    # RCL-61: global-service AWS ARN keys contain '::' (empty region/account) but are NOT
+    # cross-graph references — the segment before the first '::' is not a valid graph id.
+    assert not is_fq_key("aws:arn:aws:iam::064025363976:role/StepFunctionRole")
+    assert not is_fq_key("aws:arn:aws:s3:::my-bucket")
+    assert not is_fq_key("aws:arn:aws:cloudfront::064025363976:distribution/E123")
+    # split_fq must agree with is_fq_key: ARN keys are not splittable as fq.
+    with pytest.raises(KGError):
+        split_fq("aws:arn:aws:iam::064025363976:role/StepFunctionRole")
 
 
 def test_point_ids_deterministic():

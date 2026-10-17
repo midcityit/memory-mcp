@@ -77,6 +77,27 @@ def test_link_create_update_and_constraints(svc, gstore):
     assert e.value.code == "endpoint_not_found" and e.value.field == "dst"
 
 
+def test_link_global_service_arn_entity_not_cross_graph(svc, gstore):
+    # RCL-61: an entity whose native_id is a global-service AWS ARN has '::' in its key
+    # (empty region, and empty account for S3). Linking it within one graph must NOT be
+    # rejected as a cross-graph edge.
+    role = svc.upsert_entity("vtv", "aws", "AWS::IAM::Role",
+                             "arn:aws:iam::064025363976:role/StepFunctionRole", display_name="StepFunctionRole")
+    assert role["key"] == "aws:arn:aws:iam::064025363976:role/StepFunctionRole"
+    tkt = svc.upsert_entity("vtv", "logical", "jira_issue", "VTV-468")["key"]
+    # Entity as src.
+    assert svc.link("vtv", role["key"], "tracked_in", tkt)["status"] == "created"
+    assert gstore.current_edge("vtv", role["key"], "tracked_in", tkt) is not None
+    # Entity as dst (use a relation whose dst kind allows it).
+    dep_key = svc.upsert_entity("vtv", "kubernetes", "apps/Deployment",
+                                "aks-vtv-prod/apps/apps/Deployment/cst-api", display_name="cst-api")["key"]
+    assert svc.link("vtv", dep_key, "authenticates_as", role["key"])["status"] == "created"
+    # A genuine cross-graph reference is still rejected.
+    with pytest.raises(KGError) as e:
+        svc.link("vtv", role["key"], "tracked_in", "mcit::logical:MCIT-1")
+    assert e.value.code == "cross_graph_edge" and e.value.field == "dst"
+
+
 def test_link_to_retired_entity_rejected(svc):
     d, n = dep(svc, "memory-mcp")["key"], node(svc, "ms01-k8s-wkr-01")["key"]
     svc.retire_entity("mcit", n, "decommissioned MCIT-251")
