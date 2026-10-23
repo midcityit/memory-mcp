@@ -22,6 +22,10 @@ dependencies = [
     "setuptools>=83.0.0",
     "msgpack>=1.2.1",
     "pyyaml>=6",
+    # Transitive floor pins to clear Trivy HIGH/CRITICAL findings (MCIT-351):
+    # certifi CVE GHSA-6q48-6c7w-9gw2, urllib3 CVE-2026-97687 / CVE-2026-97689.
+    "certifi>=2026.10.19",
+    "urllib3>=2.8.0",
 ]
 
 [project.optional-dependencies]
