@@ -19,6 +19,10 @@ class Config:
     # stays on Qdrant regardless.
     kg_backend: str = "qdrant"
     kg_pg_dsn: str | None = None
+    # RCL-50 dual-write window: when true, writes fan out to BOTH stores (primary =
+    # kg_backend, secondary = the other) so they stay consistent during cutover.
+    kg_dual_write: bool = False
+    kg_dual_write_strict: bool = False
 
 
 def load_config() -> Config:
@@ -37,4 +41,6 @@ def load_config() -> Config:
         kg_max_chars=int(os.environ.get("KG_MAX_CHARS", "6000")),
         kg_backend=os.environ.get("KG_BACKEND", "qdrant").strip().lower(),
         kg_pg_dsn=os.environ.get("KG_PG_DSN") or None,
+        kg_dual_write=os.environ.get("KG_DUAL_WRITE", "false").strip().lower() in ("1", "true", "yes"),
+        kg_dual_write_strict=os.environ.get("KG_DUAL_WRITE_STRICT", "false").strip().lower() in ("1", "true", "yes"),
     )
