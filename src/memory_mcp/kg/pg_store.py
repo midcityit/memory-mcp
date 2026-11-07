@@ -338,3 +338,102 @@ class PostgresGraphStore:
         with self.pool.connection() as c, c.cursor() as cur:
             cur.execute("DELETE FROM kg_xref WHERE src=%s OR dst=%s", (fq, fq))
             return cur.rowcount
+
+
+    # ── in-engine graph traversal (RCL-49) ──────────────────────────────────
+    # These run the walk server-side in ONE round-trip via recursive CTEs, instead
+    # of the app-side BFS (the O(depth) round-trip problem RCL-43 hit on Qdrant).
+    # They return the SAME shapes the Python BFS in KGQuery produces, so KGQuery
+    # just delegates when the store exposes them. The spike (RCL-46) proved depth-3
+    # p95 ~4ms with this approach vs ~217ms for the Qdrant round-trip BFS.
+
+    # Marker so KGQuery can feature-detect the in-engine path.
+    supports_sql_traversal = True
+
+    def traverse_keys(self, graph: str, start: str, direction: str, relations,
+                      max_depth: int, at_ts: float | None) -> list[tuple[str, int]]:
+        """BFS from `start` to max_depth; return (key, shallowest_depth) pairs.
+        direction: out|in|both. relations: optional allow-list. Current/as_of gated
+        by kg_is_current. The caller hydrates entities + applies kinds/limit, exactly
+        as it does for the Python path, so semantics stay identical."""
+        at = _at(at_ts)
+        rel_sql, rel_args = "", []
+        if relations:
+            rel_sql = " AND ed.relation = ANY(%s)"
+            rel_args = [list(relations)]
+        # neighbour expansion per direction
+        if direction == "out":
+            nbr = f"SELECT ed.dst k FROM kg_edge ed WHERE ed.graph=p.g AND ed.src=w.key AND kg_is_current(ed.valid_from,ed.valid_to,p.at){rel_sql}"
+        elif direction == "in":
+            nbr = f"SELECT ed.src k FROM kg_edge ed WHERE ed.graph=p.g AND ed.dst=w.key AND kg_is_current(ed.valid_from,ed.valid_to,p.at){rel_sql}"
+        else:  # both
+            nbr = (f"SELECT ed.dst k FROM kg_edge ed WHERE ed.graph=p.g AND ed.src=w.key AND kg_is_current(ed.valid_from,ed.valid_to,p.at){rel_sql} "
+                   f"UNION ALL SELECT ed.src k FROM kg_edge ed WHERE ed.graph=p.g AND ed.dst=w.key AND kg_is_current(ed.valid_from,ed.valid_to,p.at){rel_sql}")
+        sql = f"""
+        WITH RECURSIVE params AS (SELECT %s::text g, %s::text start, %s::int maxd, %s::timestamptz at),
+        walk AS (
+            SELECT p.start key, 0 depth FROM params p
+            JOIN kg_entity e ON e.graph=p.g AND e.key=p.start AND kg_is_current(e.valid_from,e.valid_to,p.at)
+          UNION
+            SELECT nb.k, w.depth+1
+            FROM walk w JOIN params p ON true
+            CROSS JOIN LATERAL ({nbr}) nb
+            JOIN kg_entity ne ON ne.graph=p.g AND ne.key=nb.k AND kg_is_current(ne.valid_from,ne.valid_to,p.at)
+            WHERE w.depth < p.maxd
+        )
+        SELECT key, min(depth) depth FROM walk GROUP BY key ORDER BY depth, key
+        """
+        args = [graph, start, max_depth, at] + rel_args * (3 if direction == "both" else 1)
+        with self.pool.connection() as c, c.cursor() as cur:
+            cur.execute(sql, args)
+            return [(r["key"], int(r["depth"])) for r in cur.fetchall()]
+
+    def path_keys(self, graph: str, src: str, dst: str, relations, max_depth: int) -> list[list[str]]:
+        """Up to 3 shortest paths src->dst (both directions), each a list of keys.
+        Matches KGQuery.path's 'first depth dst appears = shortest' + <=3 paths."""
+        rel_sql, rel_args = "", []
+        if relations:
+            rel_sql = " AND ed.relation = ANY(%s)"
+            rel_args = [list(relations)]
+        sql = f"""
+        WITH RECURSIVE params AS (SELECT %s::text g, %s::text src, %s::text dst, %s::int maxd),
+        bfs AS (
+            SELECT p.src key, 0 depth, ARRAY[p.src] pathkeys FROM params p
+          UNION ALL
+            SELECT nb.k, b.depth+1, b.pathkeys||nb.k
+            FROM bfs b JOIN params p ON true
+            CROSS JOIN LATERAL (
+              SELECT ed.dst k FROM kg_edge ed WHERE ed.graph=p.g AND ed.src=b.key AND ed.valid_to IS NULL{rel_sql}
+              UNION ALL
+              SELECT ed.src k FROM kg_edge ed WHERE ed.graph=p.g AND ed.dst=b.key AND ed.valid_to IS NULL{rel_sql}
+            ) nb
+            WHERE b.depth < p.maxd AND NOT nb.k = ANY(b.pathkeys)
+        )
+        SELECT pathkeys FROM bfs, params WHERE key=(SELECT dst FROM params)
+        ORDER BY depth LIMIT 3
+        """
+        args = [graph, src, dst, max_depth] + rel_args * 2
+        with self.pool.connection() as c, c.cursor() as cur:
+            cur.execute(sql, args)
+            return [list(r["pathkeys"]) for r in cur.fetchall()]
+
+    def impact_keys(self, graph: str, key: str, propagating, max_depth: int, at_ts: float | None) -> list[tuple[str, int]]:
+        """Reverse reachability over propagating relations (edges INTO), layered by
+        depth. Matches KGQuery.impact (edges_to + propagating_relations)."""
+        at = _at(at_ts)
+        sql = """
+        WITH RECURSIVE params AS (SELECT %s::text g, %s::text key, %s::int maxd, %s::text[] props, %s::timestamptz at),
+        up AS (
+            SELECT p.key key, 0 depth FROM params p
+          UNION
+            SELECT ed.src, u.depth+1
+            FROM up u JOIN params p ON true
+            JOIN kg_edge ed ON ed.graph=p.g AND ed.dst=u.key AND ed.relation=ANY(p.props)
+                 AND kg_is_current(ed.valid_from,ed.valid_to,p.at)
+            WHERE u.depth < p.maxd
+        )
+        SELECT key, min(depth) depth FROM up WHERE depth>0 GROUP BY key ORDER BY depth, key
+        """
+        with self.pool.connection() as c, c.cursor() as cur:
+            cur.execute(sql, [graph, key, max_depth, list(propagating), at])
+            return [(r["key"], int(r["depth"])) for r in cur.fetchall()]
