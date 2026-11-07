@@ -13,6 +13,12 @@ class Config:
     kg_config_dir: str | None = None
     kg_dup_threshold: float = 0.90
     kg_max_chars: int = 6000
+    # KG 2.0 (RCL-44): storage backend for the knowledge graph. "qdrant" (default)
+    # keeps the per-graph Qdrant collections; "postgres" uses PostgresGraphStore
+    # against kg_pg_dsn (pgvector + Apache AGE). The memories collection always
+    # stays on Qdrant regardless.
+    kg_backend: str = "qdrant"
+    kg_pg_dsn: str | None = None
 
 
 def load_config() -> Config:
@@ -29,4 +35,6 @@ def load_config() -> Config:
         kg_config_dir=os.environ.get("KG_CONFIG_DIR") or None,
         kg_dup_threshold=float(os.environ.get("KG_DUP_THRESHOLD", "0.90")),
         kg_max_chars=int(os.environ.get("KG_MAX_CHARS", "6000")),
+        kg_backend=os.environ.get("KG_BACKEND", "qdrant").strip().lower(),
+        kg_pg_dsn=os.environ.get("KG_PG_DSN") or None,
     )
