@@ -213,26 +213,49 @@ class KGQuery:
         max_depth = max(0, min(int(max_depth), MAX_DEPTH))
         nodes: dict[str, dict] = {start: {**root.compact(), "depth": 0}}
         edges: dict[tuple, dict] = {}
-        frontier, has_more = [start], False
-        for depth in range(1, max_depth + 1):
-            if not frontier or has_more:
-                break
-            cand = list(self._neighbors(graph, frontier, direction, relations, at))
-            new_keys = {other for _, other, _ in cand if other not in nodes}
-            cm = {e.key: e for e in self.store.get_entities(graph, list(new_keys))}
-            nxt = []
-            for _, other, e in cand:
-                if other not in nodes:
-                    ent = cm.get(other)
-                    if ent is None or (kinds and ent.kind not in kinds):
-                        continue
-                    if len(nodes) >= limit:
-                        has_more = True
-                        continue
-                    nodes[other] = {**ent.compact(), "depth": depth}
-                    nxt.append(other)
-                edges[(e.src, e.relation, e.dst, e.valid_from)] = _edge_dict(e)
-            frontier = nxt
+        has_more = False
+        if getattr(self.store, "supports_sql_traversal", False):
+            # RCL-49: in-engine recursive-CTE walk — one round-trip for the whole
+            # node set instead of O(depth) per-hop queries. Then hydrate + apply
+            # kinds/limit and collect the touching edges exactly as the BFS does,
+            # so the result shape is identical.
+            pairs = self.store.traverse_keys(graph, start, direction, relations, max_depth, at)
+            cm = {e.key: e for e in self.store.get_entities(graph, [k for k, _ in pairs if k != start])}
+            for key, depth in pairs:
+                if key == start or key in nodes:
+                    continue
+                ent = cm.get(key)
+                if ent is None or (kinds and ent.kind not in kinds):
+                    continue
+                if len(nodes) >= limit:
+                    has_more = True
+                    continue
+                nodes[key] = {**ent.compact(), "depth": depth}
+            # edges among the selected nodes (both endpoints present)
+            for e in self.store.edges_touching(graph, list(nodes), relations, at):
+                if e.src in nodes and e.dst in nodes:
+                    edges[(e.src, e.relation, e.dst, e.valid_from)] = _edge_dict(e)
+        else:
+            frontier = [start]
+            for depth in range(1, max_depth + 1):
+                if not frontier or has_more:
+                    break
+                cand = list(self._neighbors(graph, frontier, direction, relations, at))
+                new_keys = {other for _, other, _ in cand if other not in nodes}
+                cm = {e.key: e for e in self.store.get_entities(graph, list(new_keys))}
+                nxt = []
+                for _, other, e in cand:
+                    if other not in nodes:
+                        ent = cm.get(other)
+                        if ent is None or (kinds and ent.kind not in kinds):
+                            continue
+                        if len(nodes) >= limit:
+                            has_more = True
+                            continue
+                        nodes[other] = {**ent.compact(), "depth": depth}
+                        nxt.append(other)
+                    edges[(e.src, e.relation, e.dst, e.valid_from)] = _edge_dict(e)
+                frontier = nxt
         result = {"nodes": sorted(nodes.values(), key=lambda n: n["depth"]),
                   "edges": [d for d in edges.values() if d["src"] in nodes and d["dst"] in nodes],
                   "has_more": has_more, "truncated": False}

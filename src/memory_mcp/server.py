@@ -26,7 +26,9 @@ def create_app() -> FastAPI:
     if cfg.kg_enabled:
         from memory_mcp.kg import build_kg
         kg = build_kg(store.client, store.embedder, memory_store=store, config_dir=cfg.kg_config_dir,
-                      dup_threshold=cfg.kg_dup_threshold, max_chars=cfg.kg_max_chars)
+                      dup_threshold=cfg.kg_dup_threshold, max_chars=cfg.kg_max_chars,
+                      backend=cfg.kg_backend, pg_dsn=cfg.kg_pg_dsn,
+                      dual_write=cfg.kg_dual_write, dual_write_strict=cfg.kg_dual_write_strict)
     mcp_tools._init(store, kg)
 
     @asynccontextmanager

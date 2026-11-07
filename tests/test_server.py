@@ -62,6 +62,11 @@ def test_create_app_with_kg_enabled_registers_tools_and_routes():
         mock_cfg.return_value = MagicMock(
             qdrant_url="http://localhost:6333", api_token="test-token", stale_days=30, otlp_endpoint="",
             kg_enabled=True, kg_config_dir=None, kg_dup_threshold=0.90, kg_max_chars=6000,
+            # RCL-50 added a dual-write branch in build_kg keyed on these config
+            # attrs. A bare MagicMock returns truthy children, which would force the
+            # dual-write path (and a psycopg import the Qdrant-only CI env lacks).
+            # Pin the Qdrant single-store defaults this test actually exercises.
+            kg_backend="qdrant", kg_pg_dsn=None, kg_dual_write=False, kg_dual_write_strict=False,
         )
         store = mock_store_cls.return_value
         store.list_memories.return_value = ([], None)

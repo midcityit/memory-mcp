@@ -228,6 +228,7 @@ Not sure which `(provider, type)` to use? Call **`kg_catalog`** first — it lis
 - Reserve `kg_delete_entity` / `kg_delete_xref` for erroneous or test data, or cleaning up orphaned xrefs; both are irreversible and `kg_delete_entity` needs `confirm=true`.
 - Record only topology you have verified; attach `evidence_memory_ids`.
 - Use `kg_xref` when one graph's work reuses another's pattern.
+- Agents are the only writers — the graph only stays accurate if you maintain it. This applies to **every** agent (Claude Code, Kiro, OpenClaw, Copilot); set the `agent` param on writes so authorship is tracked (e.g. `agent="kiro-cli"`).
 
 Acceptance: `python scripts/kg_acceptance.py` seeds the `mcit`/`vtv` topology and runs the 9 checks (needs `KG_BASE_URL`, `MEMORY_TWIN_BEARER` and the seed variables listed in the script).
 
