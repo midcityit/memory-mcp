@@ -1,0 +1,340 @@
+"""Postgres-backed graph storage (RCL-48, KG 2.0).
+
+Drop-in alternative to QdrantGraphStore, selected by KG_BACKEND=postgres. Same
+public method surface so KGQuery/KGService are unchanged; the schema is the one
+authored in RCL-47 (kg_entity / kg_edge / kg_xref, pgvector + Apache AGE).
+
+Design:
+  * One connection pool (psycopg_pool). Every query is graph-scoped.
+  * Entities carry a vector(384) embedding for resolve/dedup (pgvector cosine).
+  * Temporal: valid_from/valid_to timestamptz; "current" = valid_to IS NULL, and
+    an as_of instant uses kg_is_current(valid_from, valid_to, at). Mirrors
+    models.is_current exactly.
+  * Edges are indexed in both directions (partial indexes WHERE valid_to IS NULL),
+    so traverse(direction="both") is a single scan per hop. The in-engine
+    recursive-CTE traverse that this unlocks lives in query.py's Postgres path
+    (RCL-49); this store exposes the same edge-fetch primitives the Qdrant store
+    does so the existing Python BFS keeps working until RCL-49 lands.
+
+Timestamps are stored as timestamptz. models.Entity/Edge carry valid_from/valid_to
+as ISO strings; we convert at the boundary (iso<->ts helpers from models).
+"""
+from __future__ import annotations
+
+import json
+from datetime import datetime, timezone
+from typing import Iterator
+
+import psycopg
+from pgvector.psycopg import register_vector
+from psycopg.rows import dict_row
+from psycopg_pool import ConnectionPool
+
+from memory_mcp.kg.models import Edge, Entity, XRef, iso_to_ts
+from memory_mcp.kg.store import EntityFilter  # reuse the same filter dataclass
+
+
+def _iso(s: str | None) -> datetime | None:
+    if not s:
+        return None
+    d = datetime.fromisoformat(s)
+    return d.replace(tzinfo=timezone.utc) if d.tzinfo is None else d
+
+
+def _ts_to_iso(d: datetime | None) -> str | None:
+    return d.astimezone(timezone.utc).isoformat() if d else None
+
+
+def _at(at_ts: float | None) -> datetime:
+    return datetime.fromtimestamp(at_ts, tz=timezone.utc) if at_ts is not None else datetime.now(timezone.utc)
+
+
+# Columns in SELECT order -> Entity/Edge/XRef field order.
+_E_COLS = ("key", "provider", "type", "kind", "native_id", "display_name", "aliases",
+           "properties", "memory_ids", "agent", "created_at", "updated_at", "valid_from", "valid_to")
+_G_COLS = ("src", "relation", "dst", "properties", "evidence_memory_ids", "agent",
+           "created_at", "valid_from", "valid_to", "retire_reason")
+_X_COLS = ("src", "relation", "dst", "note", "evidence_memory_ids", "agent", "created_at", "valid_to", "dangling")
+
+
+def _row_to_entity(r: dict) -> Entity:
+    return Entity(
+        key=r["key"], provider=r["provider"], type=r["type"], kind=r["kind"],
+        native_id=r["native_id"], display_name=r["display_name"],
+        aliases=list(r["aliases"] or []), properties=r["properties"] or {},
+        memory_ids=list(r["memory_ids"] or []), agent=r["agent"],
+        created_at=_ts_to_iso(r["created_at"]) or "", updated_at=_ts_to_iso(r["updated_at"]) or "",
+        valid_from=_ts_to_iso(r["valid_from"]) or "", valid_to=_ts_to_iso(r["valid_to"]),
+    )
+
+
+def _row_to_edge(r: dict) -> Edge:
+    return Edge(
+        src=r["src"], relation=r["relation"], dst=r["dst"], properties=r["properties"] or {},
+        evidence_memory_ids=list(r["evidence_memory_ids"] or []), agent=r["agent"],
+        created_at=_ts_to_iso(r["created_at"]) or "", valid_from=_ts_to_iso(r["valid_from"]) or "",
+        valid_to=_ts_to_iso(r["valid_to"]), retire_reason=r["retire_reason"],
+    )
+
+
+def _row_to_xref(r: dict) -> XRef:
+    return XRef(
+        src=r["src"], relation=r["relation"], dst=r["dst"], note=r["note"] or "",
+        evidence_memory_ids=list(r["evidence_memory_ids"] or []), agent=r["agent"],
+        created_at=_ts_to_iso(r["created_at"]) or "", valid_to=_ts_to_iso(r["valid_to"]),
+        dangling=bool(r["dangling"]),
+    )
+
+
+class PostgresGraphStore:
+    """pgvector + AGE backed GraphStore. Public surface matches QdrantGraphStore."""
+
+    def __init__(self, dsn: str, embedder, *, min_size: int = 1, max_size: int = 8):
+        self.embedder = embedder
+        self.pool = ConnectionPool(dsn, min_size=min_size, max_size=max_size,
+                                   kwargs={"row_factory": dict_row}, configure=self._configure, open=True)
+
+    @staticmethod
+    def _configure(conn: psycopg.Connection) -> None:
+        # pgvector adaptor so Python lists bind to vector columns.
+        register_vector(conn)
+
+    # ── setup ────────────────────────────────────────────────────────────────
+    def ensure_graph(self, graph: str) -> None:
+        """No-op per-graph: the schema is multi-graph via the `graph` column and is
+        created by the RCL-47 migration (initdb ConfigMap), not per graph at runtime.
+        Kept for interface parity with QdrantGraphStore.ensure_graph."""
+        return None
+
+    def ensure_xrefs(self) -> None:
+        return None
+
+    # ── entities ─────────────────────────────────────────────────────────────
+    def get_entities(self, graph: str, keys: list[str]) -> list[Entity]:
+        if not keys:
+            return []
+        with self.pool.connection() as c, c.cursor() as cur:
+            cur.execute(
+                f"SELECT {', '.join(_E_COLS)} FROM kg_entity "
+                "WHERE graph = %s AND key = ANY(%s) AND valid_to IS NULL",
+                (graph, list(keys)),
+            )
+            by_key = {r["key"]: _row_to_entity(r) for r in cur.fetchall()}
+        return [by_key[k] for k in keys if k in by_key]
+
+    def get_entity(self, graph: str, key: str) -> Entity | None:
+        found = self.get_entities(graph, [key])
+        return found[0] if found else None
+
+    def upsert_entity(self, graph: str, e: Entity) -> Entity:
+        vec = self.embedder.embed(f"{e.display_name} {' '.join(e.aliases)} {e.type}")
+        with self.pool.connection() as c, c.cursor() as cur:
+            # Temporal upsert: the live row is the one with valid_to IS NULL. Replace it.
+            cur.execute(
+                """INSERT INTO kg_entity
+                   (graph,key,provider,type,kind,native_id,display_name,aliases,properties,
+                    memory_ids,embedding,agent,created_at,updated_at,valid_from,valid_to)
+                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb,%s,%s,%s,
+                           COALESCE(%s, now()), now(), COALESCE(%s, now()), %s)
+                   ON CONFLICT (graph, key, valid_from) DO UPDATE SET
+                     provider=EXCLUDED.provider, type=EXCLUDED.type, kind=EXCLUDED.kind,
+                     native_id=EXCLUDED.native_id, display_name=EXCLUDED.display_name,
+                     aliases=EXCLUDED.aliases, properties=EXCLUDED.properties,
+                     memory_ids=EXCLUDED.memory_ids, embedding=EXCLUDED.embedding,
+                     agent=EXCLUDED.agent, updated_at=now(), valid_to=EXCLUDED.valid_to""",
+                (graph, e.key, e.provider, e.type, e.kind, e.native_id, e.display_name,
+                 list(e.aliases), json.dumps(e.properties), list(e.memory_ids), vec, e.agent,
+                 _iso(e.created_at), _iso(e.valid_from), _iso(e.valid_to)),
+            )
+        return e
+
+    def _entity_where(self, f: EntityFilter, alias: str = "") -> tuple[str, list]:
+        p = f"{alias}." if alias else ""
+        conds, args = [], []
+        if f.provider:
+            conds.append(f"{p}provider = %s"); args.append(f.provider)
+        if f.kind:
+            conds.append(f"{p}kind = %s"); args.append(f.kind)
+        if f.type:
+            conds.append(f"{p}type = %s"); args.append(f.type)
+        if f.memory_id:
+            conds.append(f"%s = ANY({p}memory_ids)"); args.append(f.memory_id)
+        if not f.include_retired:
+            conds.append(f"kg_is_current({p}valid_from, {p}valid_to, %s)"); args.append(_at(f.at_ts))
+        return (" AND ".join(conds) if conds else "TRUE"), args
+
+    def search_entities(self, graph: str, vector: list[float], filt: EntityFilter, limit: int) -> list[tuple[Entity, float]]:
+        where, args = self._entity_where(filt)
+        with self.pool.connection() as c, c.cursor() as cur:
+            cur.execute(
+                f"SELECT {', '.join(_E_COLS)}, 1 - (embedding <=> %s) AS score "
+                f"FROM kg_entity WHERE graph = %s AND {where} AND embedding IS NOT NULL "
+                "ORDER BY embedding <=> %s LIMIT %s",
+                [vector, graph, *args, vector, limit],
+            )
+            return [(_row_to_entity(r), float(r["score"])) for r in cur.fetchall()]
+
+    def exact_matches(self, graph: str, text: str, filt: EntityFilter, limit: int = 5) -> list[Entity]:
+        where, args = self._entity_where(filt)
+        with self.pool.connection() as c, c.cursor() as cur:
+            cur.execute(
+                f"SELECT {', '.join(_E_COLS)} FROM kg_entity "
+                f"WHERE graph = %s AND {where} "
+                "AND (%s = ANY(aliases) OR native_id = %s OR display_name = %s) LIMIT %s",
+                [graph, *args, text, text, text, limit],
+            )
+            return [_row_to_entity(r) for r in cur.fetchall()]
+
+    def scroll_entities(self, graph: str, filt: EntityFilter, limit: int, cursor: str | None = None):
+        where, args = self._entity_where(filt)
+        offset = int(cursor) if cursor else 0
+        with self.pool.connection() as c, c.cursor() as cur:
+            cur.execute(
+                f"SELECT {', '.join(_E_COLS)} FROM kg_entity WHERE graph = %s AND {where} "
+                "ORDER BY key LIMIT %s OFFSET %s",
+                [graph, *args, limit + 1, offset],
+            )
+            rows = cur.fetchall()
+        more = len(rows) > limit
+        rows = rows[:limit]
+        nxt = str(offset + limit) if more else None
+        return [_row_to_entity(r) for r in rows], nxt
+
+    def count_entities(self, graph: str, filt: EntityFilter) -> int:
+        where, args = self._entity_where(filt)
+        with self.pool.connection() as c, c.cursor() as cur:
+            cur.execute(f"SELECT count(*) AS n FROM kg_entity WHERE graph = %s AND {where}", [graph, *args])
+            return int(cur.fetchone()["n"])
+
+    def iter_entities(self, graph: str) -> Iterator[Entity]:
+        with self.pool.connection() as c, c.cursor(name="iter_ent") as cur:
+            cur.execute(f"SELECT {', '.join(_E_COLS)} FROM kg_entity WHERE graph = %s", (graph,))
+            for r in cur:
+                yield _row_to_entity(r)
+
+    def delete_entity_hard(self, graph: str, key: str) -> int:
+        with self.pool.connection() as c, c.cursor() as cur:
+            cur.execute("DELETE FROM kg_edge WHERE graph = %s AND (src = %s OR dst = %s)", (graph, key, key))
+            n = cur.rowcount
+            cur.execute("DELETE FROM kg_entity WHERE graph = %s AND key = %s", (graph, key))
+        return n
+
+    # ── edges ────────────────────────────────────────────────────────────────
+    def _edge_rows(self, graph, where, args) -> list[Edge]:
+        with self.pool.connection() as c, c.cursor() as cur:
+            cur.execute(f"SELECT {', '.join(_G_COLS)} FROM kg_edge WHERE graph = %s AND {where}", [graph, *args])
+            return [_row_to_edge(r) for r in cur.fetchall()]
+
+    def _time_cond(self, at_ts, include_retired, args):
+        if include_retired:
+            return "TRUE"
+        args.append(_at(at_ts))
+        return "kg_is_current(valid_from, valid_to, %s)"
+
+    def _by(self, field, graph, keys, relations, at_ts, include_retired):
+        keys = list(dict.fromkeys(keys))
+        if not keys:
+            return []
+        args = [keys]
+        where = f"{field} = ANY(%s)"
+        if relations:
+            where += " AND relation = ANY(%s)"; args.append(list(relations))
+        where += " AND " + self._time_cond(at_ts, include_retired, args)
+        return self._edge_rows(graph, where, args)
+
+    def edges_from(self, graph, keys, relations=None, at_ts=None, include_retired=False) -> list[Edge]:
+        return self._by("src", graph, keys, relations, at_ts, include_retired)
+
+    def edges_to(self, graph, keys, relations=None, at_ts=None, include_retired=False) -> list[Edge]:
+        return self._by("dst", graph, keys, relations, at_ts, include_retired)
+
+    def edges_touching(self, graph, keys, relations=None, at_ts=None, include_retired=False) -> list[Edge]:
+        keys = list(dict.fromkeys(keys))
+        if not keys:
+            return []
+        args = [keys, keys]
+        where = "(src = ANY(%s) OR dst = ANY(%s))"
+        if relations:
+            where += " AND relation = ANY(%s)"; args.append(list(relations))
+        where += " AND " + self._time_cond(at_ts, include_retired, args)
+        return self._edge_rows(graph, where, args)
+
+    def current_edge(self, graph: str, src: str, relation: str, dst: str) -> Edge | None:
+        rows = self._edge_rows(graph, "src = %s AND relation = %s AND dst = %s AND valid_to IS NULL",
+                               [src, relation, dst])
+        return rows[0] if rows else None
+
+    def put_edge(self, graph: str, e: Edge) -> Edge:
+        with self.pool.connection() as c, c.cursor() as cur:
+            cur.execute(
+                """INSERT INTO kg_edge
+                   (graph,src,relation,dst,properties,evidence_memory_ids,agent,created_at,valid_from,valid_to,retire_reason)
+                   VALUES (%s,%s,%s,%s,%s::jsonb,%s,%s,COALESCE(%s, now()),COALESCE(%s, now()),%s,%s)
+                   ON CONFLICT (graph, src, relation, dst, valid_from) DO UPDATE SET
+                     properties=EXCLUDED.properties, evidence_memory_ids=EXCLUDED.evidence_memory_ids,
+                     agent=EXCLUDED.agent, valid_to=EXCLUDED.valid_to, retire_reason=EXCLUDED.retire_reason""",
+                (graph, e.src, e.relation, e.dst, json.dumps(e.properties), list(e.evidence_memory_ids),
+                 e.agent, _iso(e.created_at), _iso(e.valid_from), _iso(e.valid_to), e.retire_reason),
+            )
+        return e
+
+    def all_current_edges(self, graph: str) -> Iterator[Edge]:
+        with self.pool.connection() as c, c.cursor(name="all_cur_edges") as cur:
+            cur.execute(f"SELECT {', '.join(_G_COLS)} FROM kg_edge WHERE graph = %s AND valid_to IS NULL", (graph,))
+            for r in cur:
+                yield _row_to_edge(r)
+
+    def edges_with_memory(self, graph: str, memory_id: str) -> list[Edge]:
+        return self._edge_rows(graph, "%s = ANY(evidence_memory_ids)", [memory_id])
+
+    def iter_edges(self, graph: str) -> Iterator[Edge]:
+        with self.pool.connection() as c, c.cursor(name="iter_edges") as cur:
+            cur.execute(f"SELECT {', '.join(_G_COLS)} FROM kg_edge WHERE graph = %s", (graph,))
+            for r in cur:
+                yield _row_to_edge(r)
+
+    # ── cross-graph references ───────────────────────────────────────────────
+    def put_xref(self, x: XRef) -> XRef:
+        with self.pool.connection() as c, c.cursor() as cur:
+            cur.execute(
+                """INSERT INTO kg_xref (src,relation,dst,note,evidence_memory_ids,agent,created_at,valid_to,dangling)
+                   VALUES (%s,%s,%s,%s,%s,%s,COALESCE(%s, now()),%s,%s)
+                   ON CONFLICT (src, relation, dst) DO UPDATE SET
+                     note=EXCLUDED.note, evidence_memory_ids=EXCLUDED.evidence_memory_ids,
+                     agent=EXCLUDED.agent, valid_to=EXCLUDED.valid_to, dangling=EXCLUDED.dangling""",
+                (x.src, x.relation, x.dst, x.note, list(x.evidence_memory_ids), x.agent,
+                 _iso(x.created_at), _iso(x.valid_to), x.dangling),
+            )
+        return x
+
+    def get_xref(self, src: str, relation: str, dst: str) -> XRef | None:
+        with self.pool.connection() as c, c.cursor() as cur:
+            cur.execute(f"SELECT {', '.join(_X_COLS)} FROM kg_xref WHERE src=%s AND relation=%s AND dst=%s",
+                        (src, relation, dst))
+            r = cur.fetchone()
+        return _row_to_xref(r) if r else None
+
+    def xrefs_touching(self, fq: str) -> list[XRef]:
+        with self.pool.connection() as c, c.cursor() as cur:
+            cur.execute(f"SELECT {', '.join(_X_COLS)} FROM kg_xref WHERE src=%s OR dst=%s", (fq, fq))
+            return [_row_to_xref(r) for r in cur.fetchall()]
+
+    def xrefs_for_graph(self, graph: str) -> list[XRef]:
+        like = f"{graph}::%"
+        with self.pool.connection() as c, c.cursor() as cur:
+            cur.execute(f"SELECT {', '.join(_X_COLS)} FROM kg_xref WHERE src LIKE %s OR dst LIKE %s", (like, like))
+            return [_row_to_xref(r) for r in cur.fetchall()]
+
+    def mark_xrefs_dangling(self, fq: str) -> int:
+        with self.pool.connection() as c, c.cursor() as cur:
+            cur.execute("UPDATE kg_xref SET dangling = TRUE WHERE src=%s OR dst=%s", (fq, fq))
+            return cur.rowcount
+
+    def delete_xref(self, src: str, relation: str, dst: str) -> None:
+        with self.pool.connection() as c, c.cursor() as cur:
+            cur.execute("DELETE FROM kg_xref WHERE src=%s AND relation=%s AND dst=%s", (src, relation, dst))
+
+    def delete_xrefs_touching(self, fq: str) -> int:
+        with self.pool.connection() as c, c.cursor() as cur:
+            cur.execute("DELETE FROM kg_xref WHERE src=%s OR dst=%s", (fq, fq))
+            return cur.rowcount

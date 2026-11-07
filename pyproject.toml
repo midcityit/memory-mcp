@@ -30,6 +30,8 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8", "pytest-asyncio>=0.23", "pytest-mock>=3.14"]
+# KG 2.0 Postgres backend (RCL-48). Only needed when KG_BACKEND=postgres.
+postgres = ["psycopg[binary]>=3.2", "psycopg-pool>=3.2", "pgvector>=0.3"]
 
 [tool.setuptools.package-data]
 memory_mcp = ["templates/*", "kg/config/*.yaml", "kg/catalog/*.json"]
