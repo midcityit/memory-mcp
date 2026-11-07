@@ -20,6 +20,10 @@ def test_backend_postgres_requires_dsn(qdrant, stub_embedder):
         build_kg(qdrant, stub_embedder, backend="postgres", pg_dsn=None)
 
 
+@pytest.mark.skipif(
+    __import__("importlib").util.find_spec("psycopg") is None,
+    reason="postgres extra not installed",
+)
 def test_backend_postgres_selects_pg_store(qdrant, stub_embedder, monkeypatch):
     created = {}
 
