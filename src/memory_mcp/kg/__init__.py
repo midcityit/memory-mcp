@@ -35,25 +35,41 @@ def _memory_lookup(memory_store):
 
 def build_kg(client, embedder, memory_store=None, config_dir: str | None = None,
              dup_threshold: float = 0.90, max_chars: int = 6000,
-             backend: str = "qdrant", pg_dsn: str | None = None) -> KG:
+             backend: str = "qdrant", pg_dsn: str | None = None,
+             dual_write: bool = False, dual_write_strict: bool = False) -> KG:
     if config_dir:
         d = Path(config_dir)
         registry = Registry.load(config_dir=d, catalog_dir=d / "catalog" if (d / "catalog").is_dir() else None)
     else:
         registry = Registry.load()
-    # KG 2.0 (RCL-48): select the graph storage backend. Qdrant stays the default;
-    # "postgres" uses PostgresGraphStore (pgvector + AGE) against pg_dsn. The store
-    # public surface is identical, so service/query are backend-agnostic.
-    if backend == "postgres":
-        if not pg_dsn:
-            raise ValueError("KG_BACKEND=postgres requires KG_PG_DSN")
-        from memory_mcp.kg.pg_store import PostgresGraphStore
-        store = PostgresGraphStore(pg_dsn, embedder)
+
+    def _make(b: str):
+        # KG 2.0 (RCL-48): build a concrete store for backend `b`. Qdrant is default;
+        # "postgres" uses PostgresGraphStore (pgvector + AGE) against pg_dsn. Both
+        # expose the same surface, so service/query are backend-agnostic.
+        if b == "postgres":
+            if not pg_dsn:
+                raise ValueError("KG_BACKEND=postgres requires KG_PG_DSN")
+            from memory_mcp.kg.pg_store import PostgresGraphStore
+            return PostgresGraphStore(pg_dsn, embedder)
+        return QdrantGraphStore(client, embedder)
+
+    primary = _make(backend)
+    if dual_write:
+        # RCL-50: during cutover, writes fan out to both stores. Secondary is the
+        # OTHER backend. Reads stay on the primary (the configured kg_backend).
+        from memory_mcp.kg.dual_write import DualWriteGraphStore
+        secondary = _make("qdrant" if backend == "postgres" else "postgres")
+        for s in (primary, secondary):
+            for g in registry.graphs:
+                s.ensure_graph(g)
+            s.ensure_xrefs()
+        store = DualWriteGraphStore(primary, secondary, strict=dual_write_strict)
     else:
-        store = QdrantGraphStore(client, embedder)
-    for g in registry.graphs:
-        store.ensure_graph(g)
-    store.ensure_xrefs()
+        store = primary
+        for g in registry.graphs:
+            store.ensure_graph(g)
+        store.ensure_xrefs()
     service = KGService(registry, store, dup_threshold=dup_threshold)
     query = KGQuery(registry, store, memory_lookup=_memory_lookup(memory_store) if memory_store else None,
                     max_chars=max_chars)
