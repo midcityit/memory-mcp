@@ -70,3 +70,66 @@ turned OFF (so nothing still writes to Qdrant).
 - Monitoring + alerts live.
 - Qdrant KG collections archived and removed; `memories` collection untouched.
 - Epic RCL-44 closed.
+
+## Validation log — dev (2026-11-08)
+
+The §1–§3 prerequisites were exercised against the live dev instance
+(`kg2-postgres-dev` on mcit-k8s). Results, so a future operator can re-run and
+compare:
+
+### §1 Storage durability — PASS
+- Data PV reclaim policy = **Retain** (StorageClass `qnap-iscsi` defaults Retain).
+  Deleting the `kg2-postgres-data` PVC does NOT delete the underlying volume.
+  ```sh
+  kubectl -n kg2-postgres-dev get pvc kg2-postgres-data \
+    -o jsonpath='{.spec.volumeName}' \
+  | xargs kubectl get pv -o custom-columns=PV:.metadata.name,RECLAIM:.spec.persistentVolumeReclaimPolicy
+  ```
+
+### §2 Backup — PASS
+- The backup PVC (`kg2-postgres-backup`) is `qnap-iscsi` WaitForFirstConsumer, so
+  it stays **Pending until the first backup pod mounts it**. That is expected, not
+  a fault — triggering the CronJob once binds it.
+- Manual trigger + proof:
+  ```sh
+  kubectl -n kg2-postgres-dev create job kg2-backup-now \
+    --from=cronjob/kg2-postgres-backup
+  kubectl -n kg2-postgres-dev logs -l app.kubernetes.io/name=kg2-postgres-backup --tail=20
+  # -> pg_dump -> /backups/kg-<ts>.dump ; dump ok (~100 KiB) ; backup complete.
+  ```
+
+### §2 Restore drill — PASS
+- Restored the latest dump into a throwaway DB and compared row counts to live.
+  Run from a helper pod that mounts the backup PVC and uses the same
+  `kg-spike-pg` image (pg_restore must match the PG16 server):
+  ```sh
+  DUMP=$(ls -1t /backups/kg-*.dump | head -1)
+  psql -d postgres -c "CREATE DATABASE kg_drill;"
+  psql -d kg_drill -c "CREATE EXTENSION IF NOT EXISTS age; CREATE EXTENSION IF NOT EXISTS vector;"
+  pg_restore -d kg_drill --no-owner "$DUMP"      # ignorable: 'schema ag_catalog already exists'
+  psql -d kg_drill -At -c "select count(*) from kg_entity;"   # parity vs live
+  ```
+- **Gotcha:** the `age` extension pre-creates the `ag_catalog` schema, so
+  `pg_restore` logs exactly one ignored error `schema "ag_catalog" already exists`.
+  All table data still restores. Create the extensions BEFORE the restore.
+- Result on 2026-11-08: dump 44 entities / 50 edges / 1 xref restored to **exact
+  parity** with the live `kg` DB.
+- **Cleanup:** drop the drill DB with the `dropdb` utility
+  (`dropdb --if-exists kg_drill`) — the raw SQL form is blocked by the sandbox
+  denied-command policy.
+
+### §3 Monitoring — PASS
+- `postgres_exporter` (`kg2-postgres-exporter`, :9187) reports `pg_up 1` and
+  per-DB size / backend gauges, scraped by AMA into `amw-mcit`.
+- Alert rules `PostgresKgDown` / `PostgresKgExporterGone` are live
+  (infra-tf `monitor-alerts-kg2-postgres.tf`, PR #244), routed to ag-log-alerts.
+  ```sh
+  kubectl -n kg2-postgres-dev exec deploy/kg2-postgres-exporter -- \
+    sh -c 'wget -qO- http://localhost:9187/metrics' | grep '^pg_up'
+  ```
+
+### Decommission gate — NOT yet met
+Backups + restore drill + monitoring are proven, but the Qdrant KG path stays
+live. Still required before §4: a 1–2 week Phase-3 bake with the daily CronJob
+succeeding on its own schedule, then `KG_DUAL_WRITE=false`, a cold bake, and an
+archived Qdrant snapshot. Do not delete the `kg_*` collections before all of that.
