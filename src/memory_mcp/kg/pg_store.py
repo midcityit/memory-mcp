@@ -167,9 +167,9 @@ class PostgresGraphStore:
         where, args = self._entity_where(filt)
         with self.pool.connection() as c, c.cursor() as cur:
             cur.execute(
-                f"SELECT {', '.join(_E_COLS)}, 1 - (embedding <=> %s) AS score "
+                f"SELECT {', '.join(_E_COLS)}, 1 - (embedding <=> %s::vector) AS score "
                 f"FROM kg_entity WHERE graph = %s AND {where} AND embedding IS NOT NULL "
-                "ORDER BY embedding <=> %s LIMIT %s",
+                "ORDER BY embedding <=> %s::vector LIMIT %s",
                 [vector, graph, *args, vector, limit],
             )
             return [(_row_to_entity(r), float(r["score"])) for r in cur.fetchall()]
