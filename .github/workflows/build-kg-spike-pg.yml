@@ -1,8 +1,16 @@
 name: Build kg-spike-pg (multi-arch)
 
 # RCL-64 P0: source-controlled, genuinely multi-arch (amd64+arm64) build of the
-# KG 2.0 Postgres image, replacing the ad-hoc amd64-only spike image so it can
-# run on the prod arm64 pool. Manual dispatch + on changes to the image source.
+# KG 2.0 Postgres image, so it can run on the prod arm64 pool (opi-5) as well as
+# amd64. Manual dispatch + on changes to the image source.
+#
+# SPLIT BUILD: amd64 and arm64 build in parallel, each on its OWN native runner
+# (no QEMU emulation) — much faster than one runner emulating the other arch.
+# Each native job pushes a by-DIGEST image (no tag); the merge job then stitches
+# the two digests into one multi-arch tag with `docker buildx imagetools create`.
+env:
+  IMAGE: acrmcit.azurecr.io/kg-spike-pg
+
 on:
   workflow_dispatch:
     inputs:
@@ -15,13 +23,19 @@ on:
     paths: ["images/kg-spike-pg/**", ".github/workflows/build-kg-spike-pg.yml"]
 
 jobs:
-  build-push:
-    runs-on: [self-hosted, linux, homelab]
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner_arch: X64
+          - arch: arm64
+            runner_arch: ARM64
+    # Native runner per arch: the matrix arch's own homelab runner, no emulation.
+    runs-on: [self-hosted, linux, homelab, "${{ matrix.runner_arch }}"]
     steps:
       - uses: actions/checkout@v4
-
-      - name: Set up QEMU (cross-arch emulation for the non-native platform)
-        uses: docker/setup-qemu-action@v3
 
       - name: Set up Buildx
         uses: docker/setup-buildx-action@v3
@@ -33,25 +47,70 @@ jobs:
           username: ${{ secrets.ACR_USERNAME }}
           password: ${{ secrets.ACR_PASSWORD }}
 
-      - name: Build & push multi-arch
+      # Build ONLY this runner's native platform and push by digest (no tag).
+      # outputs push-by-digest=true writes the manifest digest to the registry
+      # without a tag; the merge job references these digests to build the list.
+      - name: Build & push by digest (${{ matrix.arch }})
+        id: build
         uses: docker/build-push-action@v7
         with:
           context: images/kg-spike-pg
           file: images/kg-spike-pg/Dockerfile
-          push: true
-          platforms: linux/amd64,linux/arm64
-          tags: acrmcit.azurecr.io/kg-spike-pg:${{ github.event.inputs.tag || 'pg16-age-vector' }}
-          cache-from: type=registry,ref=acrmcit.azurecr.io/kg-spike-pg:buildcache
-          cache-to: type=registry,ref=acrmcit.azurecr.io/kg-spike-pg:buildcache,mode=max
+          platforms: linux/${{ matrix.arch }}
+          cache-from: type=registry,ref=${{ env.IMAGE }}:buildcache-${{ matrix.arch }}
+          cache-to: type=registry,ref=${{ env.IMAGE }}:buildcache-${{ matrix.arch }},mode=max
+          outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
 
-      # VERIFY the published manifest actually carries BOTH arches. Guards against
-      # the TARGETARCH-default-shadow trap: a build can claim multi-arch yet ship
-      # one arch. Fails the job unless both linux/amd64 and linux/arm64 are present.
+      # Hand the per-arch digest to the merge job via an artifact.
+      - name: Export digest
+        run: |
+          mkdir -p /tmp/digests
+          echo "${{ steps.build.outputs.digest }}" > "/tmp/digests/${{ matrix.arch }}"
+      - name: Upload digest
+        uses: actions/upload-artifact@v4
+        with:
+          name: digest-${{ matrix.arch }}
+          path: /tmp/digests/${{ matrix.arch }}
+          retention-days: 1
+
+  merge:
+    needs: [build]
+    runs-on: [self-hosted, linux, homelab]
+    steps:
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to ACR (acrmcit)
+        uses: docker/login-action@v3
+        with:
+          registry: acrmcit.azurecr.io
+          username: ${{ secrets.ACR_USERNAME }}
+          password: ${{ secrets.ACR_PASSWORD }}
+
+      - name: Download digests
+        uses: actions/download-artifact@v4
+        with:
+          path: /tmp/digests
+          pattern: digest-*
+          merge-multiple: true
+
+      # Create the final multi-arch tag from the two by-digest images.
+      - name: Create multi-arch manifest
+        run: |
+          TAG="${{ github.event.inputs.tag || 'pg16-age-vector' }}"
+          AMD=$(cat /tmp/digests/amd64)
+          ARM=$(cat /tmp/digests/arm64)
+          echo "amd64=$AMD arm64=$ARM"
+          docker buildx imagetools create -t "${IMAGE}:${TAG}" \
+            "${IMAGE}@${AMD}" "${IMAGE}@${ARM}"
+
+      # VERIFY the published tag carries BOTH arches. Guards the TARGETARCH
+      # default-shadow trap (a build can claim an arch yet ship another) and a
+      # mis-wired merge. Fails unless both linux/amd64 and linux/arm64 are present.
       - name: Verify published arches
         run: |
           TAG="${{ github.event.inputs.tag || 'pg16-age-vector' }}"
-          echo "Inspecting acrmcit.azurecr.io/kg-spike-pg:$TAG"
-          OUT=$(docker buildx imagetools inspect "acrmcit.azurecr.io/kg-spike-pg:$TAG")
+          OUT=$(docker buildx imagetools inspect "${IMAGE}:${TAG}")
           echo "$OUT"
           echo "$OUT" | grep -q "linux/amd64" || { echo "MISSING linux/amd64"; exit 1; }
           echo "$OUT" | grep -q "linux/arm64" || { echo "MISSING linux/arm64"; exit 1; }

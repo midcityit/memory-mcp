@@ -23,9 +23,17 @@ inspect`), failing otherwise.
 
 ## Build
 
-Pushed by `.github/workflows/build-kg-spike-pg.yml` (self-hosted homelab runner,
-buildx amd64+arm64) to `acrmcit.azurecr.io/kg-spike-pg:pg16-age-vector`.
-Manual: Actions → "Build kg-spike-pg (multi-arch)" → Run workflow.
+Pushed by `.github/workflows/build-kg-spike-pg.yml` to
+`acrmcit.azurecr.io/kg-spike-pg:pg16-age-vector`. Manual: Actions → "Build
+kg-spike-pg (multi-arch)" → Run workflow.
+
+SPLIT BUILD: amd64 and arm64 build in parallel, each on its own native homelab
+runner (matrix on the `X64` / `ARM64` runner labels) — no QEMU emulation, so
+each arch builds at native speed. Each native job pushes a by-digest image (no
+tag); a final `merge` job stitches the two digests into one multi-arch tag with
+`docker buildx imagetools create` and verifies both arches are present. Per-arch
+registry build caches (`:buildcache-amd64`, `:buildcache-arm64`) keep rebuilds
+fast.
 
 ## Schema
 
