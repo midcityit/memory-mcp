@@ -167,9 +167,9 @@ class PostgresGraphStore:
         where, args = self._entity_where(filt)
         with self.pool.connection() as c, c.cursor() as cur:
             cur.execute(
-                f"SELECT {', '.join(_E_COLS)}, 1 - (embedding <=> %s) AS score "
+                f"SELECT {', '.join(_E_COLS)}, 1 - (embedding <=> %s::vector) AS score "
                 f"FROM kg_entity WHERE graph = %s AND {where} AND embedding IS NOT NULL "
-                "ORDER BY embedding <=> %s LIMIT %s",
+                "ORDER BY embedding <=> %s::vector LIMIT %s",
                 [vector, graph, *args, vector, limit],
             )
             return [(_row_to_entity(r), float(r["score"])) for r in cur.fetchall()]
@@ -372,13 +372,23 @@ class PostgresGraphStore:
         sql = f"""
         WITH RECURSIVE params AS (SELECT %s::text g, %s::text start, %s::int maxd, %s::timestamptz at),
         walk AS (
+            -- Anchor: take the start node as given, NOT as_of-gated on its own
+            -- valid_from. Matches KGQuery._must_get (current row, ungated) and the
+            -- Qdrant BFS, which seed the walk from `start` regardless of `at` and
+            -- time-filter only the EDGES and discovered neighbours. Gating the
+            -- anchor here made an as_of traverse return empty whenever the start
+            -- entity's valid_from was later than `at` (RCL-51 parity: check 3).
             SELECT p.start key, 0 depth FROM params p
-            JOIN kg_entity e ON e.graph=p.g AND e.key=p.start AND kg_is_current(e.valid_from,e.valid_to,p.at)
+            JOIN kg_entity e ON e.graph=p.g AND e.key=p.start
           UNION
             SELECT nb.k, w.depth+1
             FROM walk w JOIN params p ON true
             CROSS JOIN LATERAL ({nbr}) nb
-            JOIN kg_entity ne ON ne.graph=p.g AND ne.key=nb.k AND kg_is_current(ne.valid_from,ne.valid_to,p.at)
+            -- Neighbour existence only; NOT as_of-gated on the neighbour's own
+            -- valid_from (same reason as the anchor). The EDGE is time-filtered
+            -- inside {nbr} via kg_is_current, which is what defines the as_of
+            -- topology; entities are taken at their current row, matching Qdrant.
+            JOIN kg_entity ne ON ne.graph=p.g AND ne.key=nb.k
             WHERE w.depth < p.maxd
         )
         SELECT key, min(depth) depth FROM walk GROUP BY key ORDER BY depth, key
