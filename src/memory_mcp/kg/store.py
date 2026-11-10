@@ -131,6 +131,12 @@ class QdrantGraphStore:
                                       limit=limit, offset=cursor, with_payload=True)
         return [Entity.from_payload(p.payload) for p in pts], (str(nxt) if nxt is not None else None)
 
+    def resume_cursor(self, cursor: str | None, consumed: int, key: str) -> str:
+        """Cursor that resumes a scroll_entities page at the item `key` (which sat at
+        index `consumed` of the page fetched with `cursor`). Qdrant scroll offsets
+        are point ids, so resume AT that item's point id."""
+        return str(entity_point_id(key))
+
     def count_entities(self, graph: str, filt: EntityFilter) -> int:
         return self.client.count(entities_collection(graph), count_filter=self._entity_filter(filt), exact=True).count
 
