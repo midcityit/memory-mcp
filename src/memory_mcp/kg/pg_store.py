@@ -135,16 +135,20 @@ class PostgresGraphStore:
                    (graph,key,provider,type,kind,native_id,display_name,aliases,properties,
                     memory_ids,embedding,agent,created_at,updated_at,valid_from,valid_to)
                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb,%s,%s,%s,
-                           COALESCE(%s, now()), now(), COALESCE(%s, now()), %s)
+                           COALESCE(%s, now()), COALESCE(%s, now()), COALESCE(%s, now()), %s)
                    ON CONFLICT (graph, key, valid_from) DO UPDATE SET
                      provider=EXCLUDED.provider, type=EXCLUDED.type, kind=EXCLUDED.kind,
                      native_id=EXCLUDED.native_id, display_name=EXCLUDED.display_name,
                      aliases=EXCLUDED.aliases, properties=EXCLUDED.properties,
                      memory_ids=EXCLUDED.memory_ids, embedding=EXCLUDED.embedding,
-                     agent=EXCLUDED.agent, updated_at=now(), valid_to=EXCLUDED.valid_to""",
+                     agent=EXCLUDED.agent, updated_at=EXCLUDED.updated_at, valid_to=EXCLUDED.valid_to""",
+                # updated_at comes from the entity (KGService stamps it on every
+                # write, as the Qdrant store stores it). now() is only a fallback, so a
+                # store-to-store backfill keeps the source's updated_at (RCL-64 P3:
+                # overview 'recent' showed every backfilled row as just-updated).
                 (graph, e.key, e.provider, e.type, e.kind, e.native_id, e.display_name,
                  list(e.aliases), json.dumps(e.properties), list(e.memory_ids), vec, e.agent,
-                 _iso(e.created_at), _iso(e.valid_from), _iso(e.valid_to)),
+                 _iso(e.created_at), _iso(e.updated_at), _iso(e.valid_from), _iso(e.valid_to)),
             )
         return e
 
@@ -165,7 +169,17 @@ class PostgresGraphStore:
 
     def search_entities(self, graph: str, vector: list[float], filt: EntityFilter, limit: int) -> list[tuple[Entity, float]]:
         where, args = self._entity_where(filt)
-        with self.pool.connection() as c, c.cursor() as cur:
+        with self.pool.connection() as c, c.transaction(), c.cursor() as cur:
+            # EXACT search, never the HNSW index (RCL-64 P3). The index spans every
+            # graph and is filtered AFTER its ef_search candidates, so a graph-scoped
+            # query could return nothing at all: on prod data 23/291 mcit entities
+            # could not find themselves (vtv's 2.8k rows filled the candidate list).
+            # Qdrant does exact search at this size too (collections are under its
+            # indexing threshold), so this is the parity behaviour. A filtered seq
+            # scan of a few thousand 384-d vectors is ~20ms p95. SET LOCAL ends with
+            # this transaction, so other queries on the pooled connection keep
+            # their index scans (traversal relies on them).
+            cur.execute("SET LOCAL enable_indexscan = off")
             cur.execute(
                 f"SELECT {', '.join(_E_COLS)}, 1 - (embedding <=> %s::vector) AS score "
                 f"FROM kg_entity WHERE graph = %s AND {where} AND embedding IS NOT NULL "
@@ -199,6 +213,13 @@ class PostgresGraphStore:
         rows = rows[:limit]
         nxt = str(offset + limit) if more else None
         return [_row_to_entity(r) for r in rows], nxt
+
+    def resume_cursor(self, cursor: str | None, consumed: int, key: str) -> str:
+        """Cursor that resumes a scroll_entities page at the item at index `consumed`
+        of the page fetched with `cursor`. Postgres scroll cursors are row offsets
+        (ORDER BY key), NOT Qdrant point ids — handing back a point id made the next
+        page raise ValueError on int(cursor) (RCL-64 P3)."""
+        return str((int(cursor) if cursor else 0) + consumed)
 
     def count_entities(self, graph: str, filt: EntityFilter) -> int:
         where, args = self._entity_where(filt)

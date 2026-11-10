@@ -181,6 +181,7 @@ class KGQuery:
             self.reg.relation(missing_relation)
         filt = EntityFilter(provider=provider, kind=kind, type=type, include_retired=include_retired)
         page, nxt = self.store.scroll_entities(graph, filt, limit, cursor)
+        scrolled = [e.key for e in page]  # scroll positions, before missing_relation filtering
         if missing_relation and page:
             ks = [e.key for e in page]
             edges = (self.store.edges_from if direction == "out" else self.store.edges_to)(graph, ks, [missing_relation])
@@ -197,10 +198,13 @@ class KGQuery:
         trimmed_count = len(result["items"])
         if trimmed_count < original_count:
             result["has_more"] = True
-            # Set cursor to the point_id of the first dropped item
+            # Resume at the first dropped item. The cursor format is the STORE's
+            # (Qdrant: point id; Postgres: row offset), so ask the store; its
+            # position is its index in the scrolled page, not the filtered page.
             if trimmed_count < len(page):
                 first_dropped = page[trimmed_count]
-                result["cursor"] = str(entity_point_id(first_dropped.key))
+                result["cursor"] = self.store.resume_cursor(
+                    cursor, scrolled.index(first_dropped.key), first_dropped.key)
         return result
 
     # ── traverse ─────────────────────────────────────────────────────────────
@@ -231,9 +235,21 @@ class KGQuery:
                     has_more = True
                     continue
                 nodes[key] = {**ent.compact(), "depth": depth}
-            # edges among the selected nodes (both endpoints present)
+            # Edges among the selected nodes (both endpoints present) that the BFS
+            # would have WALKED: the BFS only expands nodes at depth < max_depth, in
+            # `direction`, so an edge whose walked-from endpoint sits on the outer
+            # ring (depth == max_depth) is never seen by it. Keeping those made the
+            # SQL path return extra ring-to-ring edges (RCL-64 P3 prod parity: 11
+            # extra edges at depth 3).
+            def expanded(k):
+                return nodes[k]["depth"] < max_depth
+
             for e in self.store.edges_touching(graph, list(nodes), relations, at):
-                if e.src in nodes and e.dst in nodes:
+                if e.src not in nodes or e.dst not in nodes:
+                    continue
+                walked = ((direction in ("out", "both") and expanded(e.src))
+                          or (direction in ("in", "both") and expanded(e.dst)))
+                if walked:
                     edges[(e.src, e.relation, e.dst, e.valid_from)] = _edge_dict(e)
         else:
             frontier = [start]
