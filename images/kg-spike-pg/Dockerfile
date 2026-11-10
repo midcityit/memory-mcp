@@ -32,8 +32,10 @@ RUN set -eux; \
 
 # Apache AGE 1.5.0 (graph) — compiled for the native arch of this build stage.
 RUN set -eux; \
-    git clone --depth 1 --branch "${AGE_VERSION##*/}" https://github.com/apache/age.git /tmp/age || \
-    git clone https://github.com/apache/age.git /tmp/age; \
+    # AGE tags carry the PG major as a prefix (e.g. PG16/v1.5.0-rc0): clone the
+    # FULL tag. No fallback to master: master targets a newer PG and does not
+    # compile against PG16, so a bad tag must fail the build loudly.
+    git clone --depth 1 --branch "${AGE_VERSION}" https://github.com/apache/age.git /tmp/age; \
     cd /tmp/age; \
     make PG_CONFIG=/usr/lib/postgresql/16/bin/pg_config; \
     make install PG_CONFIG=/usr/lib/postgresql/16/bin/pg_config; \
