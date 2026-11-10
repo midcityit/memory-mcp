@@ -22,6 +22,11 @@ on:
     branches: ["main"]
     paths: ["images/kg-spike-pg/**", ".github/workflows/build-kg-spike-pg.yml"]
 
+# OIDC token exchange for the runner pod's workload identity (ACR push auth).
+permissions:
+  contents: read
+  id-token: write
+
 jobs:
   build:
     strategy:
@@ -40,12 +45,16 @@ jobs:
       - name: Set up Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Log in to ACR (acrmcit)
-        uses: docker/login-action@v3
-        with:
-          registry: acrmcit.azurecr.io
-          username: ${{ secrets.ACR_USERNAME }}
-          password: ${{ secrets.ACR_PASSWORD }}
+      # ACR auth via the runner pod's workload identity (id-github-runner-mcit,
+      # AcrPush on acrmcit). No registry secrets. Same as openclaw-container.
+      - name: Log in to ACR via workload identity
+        run: |
+          az login --service-principal \
+            -u "$AZURE_CLIENT_ID" \
+            --tenant "$AZURE_TENANT_ID" \
+            --federated-token "$(cat "$AZURE_FEDERATED_TOKEN_FILE")" \
+            --output none
+          az acr login --name acrmcit
 
       # Build ONLY this runner's native platform and push by digest (no tag).
       # outputs push-by-digest=true writes the manifest digest to the registry
@@ -80,12 +89,14 @@ jobs:
       - name: Set up Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Log in to ACR (acrmcit)
-        uses: docker/login-action@v3
-        with:
-          registry: acrmcit.azurecr.io
-          username: ${{ secrets.ACR_USERNAME }}
-          password: ${{ secrets.ACR_PASSWORD }}
+      - name: Log in to ACR via workload identity
+        run: |
+          az login --service-principal \
+            -u "$AZURE_CLIENT_ID" \
+            --tenant "$AZURE_TENANT_ID" \
+            --federated-token "$(cat "$AZURE_FEDERATED_TOKEN_FILE")" \
+            --output none
+          az acr login --name acrmcit
 
       - name: Download digests
         uses: actions/download-artifact@v4
