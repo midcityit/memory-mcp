@@ -122,6 +122,23 @@ class PostgresGraphStore:
             by_key = {r["key"]: _row_to_entity(r) for r in cur.fetchall()}
         return [by_key[k] for k in keys if k in by_key]
 
+    def compact_entities(self, graph: str, keys: list[str]) -> list[Entity]:
+        """Current entities with ONLY the fields Entity.compact() + kind need
+        (key, provider, type, kind, native_id, display_name); other fields keep
+        their defaults. For traverse hydration only, never for writes (RCL-64 P5)."""
+        if not keys:
+            return []
+        with self.pool.connection() as c, c.cursor() as cur:
+            cur.execute(
+                "SELECT key, provider, type, kind, native_id, display_name FROM kg_entity "
+                "WHERE graph = %s AND key = ANY(%s) AND valid_to IS NULL",
+                (graph, list(keys)),
+            )
+            by_key = {r["key"]: Entity(key=r["key"], provider=r["provider"], type=r["type"], kind=r["kind"],
+                                       native_id=r["native_id"], display_name=r["display_name"])
+                      for r in cur.fetchall()}
+        return [by_key[k] for k in keys if k in by_key]
+
     def get_entity(self, graph: str, key: str) -> Entity | None:
         found = self.get_entities(graph, [key])
         return found[0] if found else None
@@ -275,6 +292,19 @@ class PostgresGraphStore:
             return []
         args = [keys, keys]
         where = "(src = ANY(%s) OR dst = ANY(%s))"
+        if relations:
+            where += " AND relation = ANY(%s)"; args.append(list(relations))
+        where += " AND " + self._time_cond(at_ts, include_retired, args)
+        return self._edge_rows(graph, where, args)
+
+    def edges_among(self, graph, keys, relations=None, at_ts=None, include_retired=False) -> list[Edge]:
+        """Edges with BOTH endpoints in keys (traverse keeps only those). Fewer
+        rows than edges_touching for a big node set (RCL-64 P5)."""
+        keys = list(dict.fromkeys(keys))
+        if not keys:
+            return []
+        args = [keys, keys]
+        where = "(src = ANY(%s) AND dst = ANY(%s))"
         if relations:
             where += " AND relation = ANY(%s)"; args.append(list(relations))
         where += " AND " + self._time_cond(at_ts, include_retired, args)

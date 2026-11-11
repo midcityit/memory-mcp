@@ -19,15 +19,43 @@ def _size(obj) -> int:
     return len(json.dumps(obj, default=str))
 
 
+def _largest_fitting(lo: int, hi: int, fits) -> int:
+    """Largest n in [lo, hi] with fits(n), assuming fits is True up to some n
+    and False after it (size only grows with n). Returns lo if none fit.
+    O(log n) calls instead of one size check per removed item."""
+    best = lo
+    while lo <= hi:
+        mid = (lo + hi) // 2
+        if fits(mid):
+            best, lo = mid, mid + 1
+        else:
+            hi = mid - 1
+    return best
+
+
+def _trim_list(result: dict, key: str, max_chars: int) -> None:
+    """Same result as `while lst and _size(result) > max_chars: lst.pop()`,
+    found by binary search on the kept prefix length (RCL-64 P5: the pop loop
+    re-serialised the whole result once per removed item)."""
+    full = result.get(key)
+    if not isinstance(full, list) or not full or _size(result) <= max_chars:
+        return
+
+    def fits(n):
+        result[key] = full[:n]
+        return _size(result) <= max_chars
+
+    # The caller checked the full list does not fit, so search [0, len-1].
+    result[key] = full[:_largest_fitting(0, len(full) - 1, fits)]
+
+
 def fit(result: dict, max_chars: int, list_keys: tuple[str, ...]) -> dict:
     """Trim the named lists from the tail until the JSON fits; mark truncated."""
     if _size(result) <= max_chars:
         return result
     result["truncated"] = True
     for k in list_keys:
-        lst = result.get(k)
-        while isinstance(lst, list) and lst and _size(result) > max_chars:
-            lst.pop()
+        _trim_list(result, k, max_chars)
     return result
 
 
@@ -224,7 +252,11 @@ class KGQuery:
             # kinds/limit and collect the touching edges exactly as the BFS does,
             # so the result shape is identical.
             pairs = self.store.traverse_keys(graph, start, direction, relations, max_depth, at)
-            cm = {e.key: e for e in self.store.get_entities(graph, [k for k, _ in pairs if k != start])}
+            # Only kind + compact() fields are used here, so a store may offer a
+            # light fetch (RCL-64 P5: full rows incl. jsonb for ~800 hub
+            # neighbours were a big share of the walk).
+            fetch = getattr(self.store, "compact_entities", None) or self.store.get_entities
+            cm = {e.key: e for e in fetch(graph, [k for k, _ in pairs if k != start])}
             for key, depth in pairs:
                 if key == start or key in nodes:
                     continue
@@ -244,7 +276,10 @@ class KGQuery:
             def expanded(k):
                 return nodes[k]["depth"] < max_depth
 
-            for e in self.store.edges_touching(graph, list(nodes), relations, at):
+            # Only edges with BOTH ends selected are kept, so a store may fetch
+            # just those (edges_among) instead of every edge touching any node.
+            among = getattr(self.store, "edges_among", None) or self.store.edges_touching
+            for e in among(graph, list(nodes), relations, at):
                 if e.src not in nodes or e.dst not in nodes:
                     continue
                 walked = ((direction in ("out", "both") and expanded(e.src))
@@ -287,15 +322,23 @@ class KGQuery:
         if _size(result) <= max_chars:
             return result
         result["truncated"] = True
-        nodes = result["nodes"]  # sorted by depth: popping removes the deepest first
-        while len(nodes) > 1 and _size(result) > max_chars:
-            nodes.pop()
-            keep = {n["key"] for n in nodes}
-            result["edges"] = [e for e in result["edges"] if e["src"] in keep and e["dst"] in keep]
+        # Keep the largest depth-sorted node prefix (>= 1 node, the root) whose
+        # result fits, with only the edges among kept nodes: the same outcome as
+        # popping the deepest node one by one, but O(log n) size checks
+        # (RCL-64 P5: the pop loop dominated big-hub traversals).
+        nodes, edges = result["nodes"], result["edges"]
+
+        def fits(n):
+            keep = {x["key"] for x in nodes[:n]}
+            result["nodes"] = nodes[:n]
+            result["edges"] = [e for e in edges if e["src"] in keep and e["dst"] in keep]
+            return _size(result) <= max_chars
+
+        # Search up to ALL nodes: setting truncated=True can itself shrink the
+        # JSON (true vs false), so the untrimmed set may fit now.
+        fits(_largest_fitting(1, len(nodes), fits))
         for k in ("xrefs", "edges"):
-            lst = result.get(k)
-            while isinstance(lst, list) and lst and _size(result) > max_chars:
-                lst.pop()
+            _trim_list(result, k, max_chars)
         return result
 
     # ── path ─────────────────────────────────────────────────────────────────
