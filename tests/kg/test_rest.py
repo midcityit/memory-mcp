@@ -53,7 +53,7 @@ def seeded(svc):
 
 async def test_graphs_and_overview(seeded, kg_registry, gstore):
     async with client(make_app(seeded, kg_registry, gstore)) as c:
-        assert set((await c.get("/kg/graphs")).json()["graphs"]) == {"mcit", "vtv"}
+        assert set((await c.get("/kg/graphs")).json()["graphs"]) == {"mcit", "vtv", "ziese"}
         ov = (await c.get("/kg/overview", params={"graphs": "mcit"})).json()
         assert ov["graphs"][0]["entities"] == 3
 
