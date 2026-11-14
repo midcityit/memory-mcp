@@ -11,7 +11,7 @@
 # platforms (that is exactly how the previous image became amd64-only while the
 # build claimed multi-arch). We declare it with no default and never hardcode an
 # arch below — both extensions compile from source for the build's native arch.
-FROM postgres:16-bookworm
+FROM postgres:18-bookworm@sha256:ece55f7868da684e400f82f1030a050718adbdd65c23aa500c486f6e2950dc0f
 
 # buildx injects these per target platform. NO DEFAULTS.
 ARG TARGETARCH
