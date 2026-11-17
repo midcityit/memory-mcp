@@ -31,6 +31,17 @@ class Config:
     bootstrap_tenant_name: str | None = None
 
 
+def cfg_str(cfg, name: str) -> str | None:
+    """`cfg.<name>` if it is a non-empty str, else None.
+
+    Defensive on purpose: existing tests build configs as bare MagicMocks, whose
+    unset attributes are truthy mocks. Treating anything but a real string as unset
+    keeps such a config in legacy mode instead of enabling optional features.
+    """
+    value = getattr(cfg, name, None)
+    return value if isinstance(value, str) and value else None
+
+
 def load_config() -> Config:
     api_token = os.environ.get("API_TOKEN") or None
     ui_token = os.environ.get("UI_TOKEN") or None
@@ -53,7 +64,8 @@ def load_config() -> Config:
         kg_pg_dsn=os.environ.get("KG_PG_DSN") or None,
         kg_dual_write=os.environ.get("KG_DUAL_WRITE", "false").strip().lower() in ("1", "true", "yes"),
         kg_dual_write_strict=os.environ.get("KG_DUAL_WRITE_STRICT", "false").strip().lower() in ("1", "true", "yes"),
-        admin_pg_dsn=os.environ.get("ADMIN_PG_DSN") or os.environ.get("KG_PG_DSN") or None,
+        # Admin (multi-tenant) mode is opt-in: never inferred from KG_PG_DSN.
+        admin_pg_dsn=os.environ.get("ADMIN_PG_DSN") or None,
         ui_token=ui_token,
         admin_group_ids=tuple(
             g.strip() for g in os.environ.get("ADMIN_GROUP_IDS", "").split(",") if g.strip()

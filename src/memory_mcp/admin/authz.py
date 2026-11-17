@@ -37,7 +37,12 @@ _WILDCARD = "*"
 
 
 def _role(p: Principal, tenant: str) -> str | None:
-    """The principal's role on `tenant`; only UI principals may hold the "*" wildcard."""
+    """The principal's role on `tenant`.
+
+    The "*" wildcard (every tenant) applies to UI principals only, where it comes from
+    an admin group. Keys never hold "*": a key lists its tenants explicitly, so a "*"
+    in a key's roles is ignored rather than widening its reach.
+    """
     role = p.roles.get(tenant)
     if role is None and p.kind == "ui":
         role = p.roles.get(_WILDCARD)

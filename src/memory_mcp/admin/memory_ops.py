@@ -10,10 +10,18 @@ from collections.abc import Callable
 from typing import Any
 
 from memory_mcp.admin.audit import Audit
-from memory_mcp.admin.authz import authorize, repo_allowed, resolve_tenant, stamped_agent
+from memory_mcp.admin.authz import REST_ACTION, authorize, repo_allowed, resolve_tenant, stamped_agent
 from memory_mcp.admin.models import AuthzError, Principal
 from memory_mcp.admin.tenants import TenantService
 from memory_mcp.store import COLLECTION, MemoryRecord, MemoryStore
+
+# Action names come from REST_ACTION, the single table; the MCP tools share these names.
+LIST = REST_ACTION[("GET", "/memories")]
+GET = REST_ACTION[("GET", "/memories/{id}")]
+SEARCH = REST_ACTION[("POST", "/memories/search")]
+SAVE = REST_ACTION[("POST", "/memories")]
+UPDATE = REST_ACTION[("PATCH", "/memories/{id}")]
+DELETE = REST_ACTION[("DELETE", "/memories/{id}")]
 
 
 class MemoryOps:
@@ -49,7 +57,9 @@ class MemoryOps:
             collection = self._target(p, action, requested, attempt)
             return fn(collection, attempt)
         except AuthzError as e:
-            self._deny(p, action, attempt, target, e.code)
+            # 4xx is a refusal; 5xx (e.g. store_unavailable) is an outage, not a denial.
+            outcome = "denied" if 400 <= e.status < 500 else "error"
+            self._audit.record(p, action, attempt.get("tenant"), target, outcome, {"rule": e.code})
             raise
 
     def _get_visible(self, p: Principal, action: str, memory_id: str, collection: str,
@@ -81,7 +91,7 @@ class MemoryOps:
                 filter_type=type, filter_source_repo=source_repo, filter_agent=agent,
                 filter_tags=tags, limit=limit, offset=offset, collection=collection)
             return self._filter(p, records), next_offset
-        return self._run(p, "list_memories", tenant, None, go)
+        return self._run(p, LIST, tenant, None, go)
 
     def search(self, p: Principal, tenant: str | None, query: str, limit: int = 10,
                filter_type: str | None = None, filter_source_repo: str | None = None) -> list[MemoryRecord]:
@@ -91,17 +101,17 @@ class MemoryOps:
             records = self._store.search(query=query, limit=limit, filter_type=filter_type,
                                          filter_source_repo=filter_source_repo, collection=collection)
             return self._filter(p, records)
-        return self._run(p, "search_memories", tenant, None, go)
+        return self._run(p, SEARCH, tenant, None, go)
 
     def get(self, p: Principal, tenant: str | None, memory_id: str) -> MemoryRecord | None:
-        action = "search_memories"
+        action = GET
         return self._run(p, action, tenant, memory_id,
                          lambda collection, attempt: self._get_visible(p, action, memory_id, collection, attempt))
 
     # ── writes ────────────────────────────────────────────────────────────────
     def save(self, p: Principal, tenant: str | None, *, type: str, name: str, content: str,
              source_repo: str = "global", agent: str | None = None, tags: list[str] | None = None) -> MemoryRecord:
-        action = "save_memory"
+        action = SAVE
         tags = list(tags or [])
 
         def go(collection, attempt):
@@ -125,7 +135,7 @@ class MemoryOps:
 
     def update(self, p: Principal, tenant: str | None, memory_id: str, content: str,
                tags: list[str] | None = None) -> MemoryRecord | None:
-        action = "save_memory"
+        action = UPDATE
 
         def go(collection, attempt):
             if self._get_visible(p, action, memory_id, collection, attempt) is None:
@@ -137,7 +147,7 @@ class MemoryOps:
         return self._run(p, action, tenant, memory_id, go)
 
     def delete(self, p: Principal, tenant: str | None, memory_id: str) -> bool:
-        action = "delete_memory"
+        action = DELETE
 
         def go(collection, attempt):
             if self._get_visible(p, action, memory_id, collection, attempt) is None:

@@ -47,12 +47,12 @@ def test_ui_token_alone_makes_api_token_optional(monkeypatch):
     assert cfg.ui_token == "ui"
 
 
-def test_admin_dsn_falls_back_to_kg_pg_dsn(monkeypatch):
+def test_admin_dsn_comes_only_from_admin_pg_dsn(monkeypatch):
     monkeypatch.setenv("QDRANT_URL", "http://q:6333")
     monkeypatch.setenv("API_TOKEN", "t")
     monkeypatch.delenv("ADMIN_PG_DSN", raising=False)
     monkeypatch.setenv("KG_PG_DSN", "postgresql://kg")
-    assert load_config().admin_pg_dsn == "postgresql://kg"
+    assert load_config().admin_pg_dsn is None
     monkeypatch.setenv("ADMIN_PG_DSN", "postgresql://admin")
     assert load_config().admin_pg_dsn == "postgresql://admin"
 

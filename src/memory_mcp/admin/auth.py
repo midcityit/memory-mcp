@@ -29,6 +29,7 @@ from starlette.responses import JSONResponse
 from memory_mcp.admin.keys import parse_key, verify_secret
 from memory_mcp.admin.models import ApiKey, AuthzError, Principal, RoleMapping
 from memory_mcp.admin.store import AdminStore
+from memory_mcp.config import cfg_str
 
 log = logging.getLogger(__name__)
 
@@ -43,11 +44,6 @@ GROUPS_KNOWN_PATH = "/admin/groups/known"
 _GROUP_RE = re.compile(r"^[0-9a-fA-F-]{36}$")
 _ROLE_RANK = {"viewer": 1, "editor": 2, "admin": 3}
 _UNAUTHORIZED = "Unauthorized"
-
-
-def _str_or_none(value: Any) -> str | None:
-    """Config fields may be MagicMock-ish in tests: anything not a non-empty str is None."""
-    return value if isinstance(value, str) and value else None
 
 
 def _group_set(value: Any) -> frozenset[str]:
@@ -104,8 +100,8 @@ class _TtlLru:
 
 class Authenticator:
     def __init__(self, cfg, store: AdminStore | None, clock: Callable[[], float] = time.time):
-        self._api_token = _str_or_none(getattr(cfg, "api_token", None))
-        self._ui_token = _str_or_none(getattr(cfg, "ui_token", None))
+        self._api_token = cfg_str(cfg, "api_token")
+        self._ui_token = cfg_str(cfg, "ui_token")
         self._admin_groups = _group_set(getattr(cfg, "admin_group_ids", ()))
         if self._api_token is not None and _token_matches(self._api_token, self._ui_token):
             raise ValueError("API_TOKEN and UI_TOKEN must differ")
@@ -131,6 +127,15 @@ class Authenticator:
             self._unknown_keys.clear()
             self._settings = None
             self._mappings = None
+
+    def settings(self) -> dict[str, Any]:
+        """Admin settings, cached for CACHE_TTL_S and dropped by invalidate().
+
+        Raises AuthzError(503, "store_unavailable") if the store cannot be read.
+        """
+        if self._store is None:
+            return {}
+        return self._settings_cached()
 
     def resolve(self, headers: Mapping[str, str], *, path: str | None = None) -> Principal:
         h = {k.lower(): v for k, v in headers.items()}

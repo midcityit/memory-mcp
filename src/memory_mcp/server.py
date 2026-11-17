@@ -10,7 +10,7 @@ from memory_mcp.admin.memory_ops import MemoryOps
 from memory_mcp.admin.models import AuthzError, Principal
 from memory_mcp.admin.store import AdminStore
 from memory_mcp.admin.tenants import TenantService
-from memory_mcp.config import load_config, Config
+from memory_mcp.config import cfg_str, load_config, Config
 from memory_mcp.store import MemoryStore, MemoryRecord
 from memory_mcp import mcp_tools
 from memory_mcp.telemetry import setup_telemetry
@@ -23,8 +23,8 @@ def build_admin_store(cfg: Config) -> AdminStore | None:
 
     In legacy mode only API_TOKEN is accepted and every memory lives in one collection.
     """
-    dsn = getattr(cfg, "admin_pg_dsn", None)
-    if not isinstance(dsn, str) or not dsn:
+    dsn = cfg_str(cfg, "admin_pg_dsn")
+    if dsn is None:
         return None
     from memory_mcp.admin.pg_store import PgAdminStore
     store = PgAdminStore(dsn)
@@ -74,8 +74,7 @@ def create_app(*, admin_store: AdminStore | None = None, memory_store: MemorySto
     authenticator = Authenticator(cfg, admin_store)
     audit = NullAudit()
     # Settings come from the authenticator's cache so admin writes invalidate one place.
-    settings = authenticator._settings_cached if admin_store is not None else dict
-    ops = MemoryOps(store, tenants, settings, audit)
+    ops = MemoryOps(store, tenants, authenticator.settings, audit)
     mcp_tools._init(ops, kg)
 
     @asynccontextmanager

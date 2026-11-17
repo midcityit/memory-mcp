@@ -444,17 +444,17 @@ async def test_source_repo_patterns(env, call):
 # ── agent stamping ──────────────────────────────────────────────────────────────
 async def test_agent_is_stamped(env, call):
     k = env.key(agent="agent-a")
-    await call.save(k, name="by-key", agent="spoofed")
-    await call.save(ui_headers(name="Ada Example"), name="by-ui", agent="spoofed")
-    await call.save(LEGACY, name="by-legacy-declared", agent="declared-agent")
-    await call.save(LEGACY, name="by-legacy-default")
-
-    def agent(name):
-        return env.mstore.find_by_name(name, "global", collection=COLLECTION).agent
-    assert agent("by-key") == "agent-a"
-    assert agent("by-ui") == "ui:Ada Example"
-    assert agent("by-legacy-declared") == "declared-agent"
-    assert agent("by-legacy-default") == "claude-code"
+    cases = [
+        (k, "by-key", "spoofed", "agent-a"),
+        (ui_headers(name="Ada Example"), "by-ui", "spoofed", "ui:Ada Example"),
+        (LEGACY, "by-legacy-declared", "declared-agent", "declared-agent"),
+        (LEGACY, "by-legacy-default", None, "claude-code"),
+    ]
+    for who, name, declared, expected in cases:
+        r = await call.save(who, name=name, agent=declared)
+        assert r.ok, r
+        assert r.data["agent"] == expected, name
+        assert env.mstore.find_by_name(name, "global", collection=COLLECTION).agent == expected
 
 
 # ── allowed_types ───────────────────────────────────────────────────────────────
@@ -636,3 +636,98 @@ def test_create_app_bootstraps_and_exposes_state():
     assert e.app.state.tenants.collection_for("alpha") == COLLECTION
     assert e.app.state.admin_store is e.admin
     assert e.app.state.audit is e.audit
+
+
+# ── fix round 1 ─────────────────────────────────────────────────────────────────
+async def test_rest_patch_denied_for_read_only_key_and_viewer(env):
+    c = Caller("rest", env.client)
+    rid = env.seed("alpha", "kept")
+    denied(await c.update(env.key(access="read"), rid), 403, "key_read_only", "read-only")
+    denied(await c.update(ui_headers(groups=(G_VIEW,)), rid), 403, "role_insufficient", "Role 'viewer'")
+    assert env.mstore.get(rid, collection=COLLECTION).content == "kept content"
+
+
+async def test_rest_patch_success_is_audited(env):
+    k = env.key()
+    key_id = k.split("_")[1]
+    rid = env.seed("alpha", "kept")
+    r = await Caller("rest", env.client).update(k, rid, content="new text")
+    assert r.ok and r.data["content"] == "new text"
+    assert env.audit.rows == [(key_id, "save_memory", "alpha", rid, "allowed", None)]
+
+
+async def test_each_rest_route_uses_its_rest_action(env):
+    """The action authorized and audited per route is the one REST_ACTION names."""
+    c = Caller("rest", env.client)
+    k = env.key()
+    rid = env.seed("beta", "x")
+    calls = {
+        ("GET", "/memories"): lambda: c.list(k, tenant="beta"),
+        ("GET", "/memories/{id}"): lambda: c.get(k, rid, tenant="beta"),
+        ("POST", "/memories/search"): lambda: c.search(k, tenant="beta"),
+        ("POST", "/memories"): lambda: c.save(k, tenant="beta"),
+        ("PATCH", "/memories/{id}"): lambda: c.update(k, rid, tenant="beta"),
+        ("DELETE", "/memories/{id}"): lambda: c.delete(k, rid, tenant="beta"),
+    }
+    assert set(calls) == set(REST_ACTION)
+    for route, fn in calls.items():
+        denied(await fn(), 403, "tenant_forbidden", "No access")
+        assert env.audit.rows[-1][1] == REST_ACTION[route], route
+
+
+async def test_store_outage_is_audited_as_error_not_denial(env, call):
+    k = env.key()
+    assert (await call.list(k)).ok  # key now known
+
+    def down():
+        raise RuntimeError("db down")
+    env.admin.get_settings = down
+    env.app.state.authenticator.invalidate()
+    r = await call.list(k)
+    assert not r.ok and "Admin store unavailable" in r.message
+    if r.status is not None:
+        assert (r.status, r.code) == (503, "store_unavailable")
+    assert env.audit.rows[-1][4:] == ("error", {"rule": "store_unavailable"})
+
+
+def test_authenticator_settings_public_cached_and_invalidated():
+    from memory_mcp.admin.auth import Authenticator
+    admin = InMemoryAdminStore()
+    admin.put_settings({"default_tenant": "alpha"}, by="t")
+    a = Authenticator(_cfg(), admin)
+    assert a.settings()["default_tenant"] == "alpha"
+    admin.put_settings({"default_tenant": "beta"}, by="t")
+    assert a.settings()["default_tenant"] == "alpha"  # cached
+    a.invalidate()
+    assert a.settings()["default_tenant"] == "beta"
+    assert Authenticator(_cfg(), None).settings() == {}
+
+
+def test_authenticator_settings_outage_is_503():
+    from memory_mcp.admin.auth import Authenticator
+    admin = InMemoryAdminStore()
+
+    def down():
+        raise RuntimeError("db down")
+    admin.get_settings = down
+    with pytest.raises(AuthzError) as e:
+        Authenticator(_cfg(), admin).settings()
+    assert (e.value.status, e.value.code) == (503, "store_unavailable")
+
+
+async def test_kg_pg_dsn_alone_keeps_legacy_mode():
+    from memory_mcp.server import create_app
+    qc = QdrantClient(":memory:")
+    mstore = MemoryStore("unused", embedder=StubEmbedder(), client=qc)
+    cfg = _cfg(ui_token=None, kg_pg_dsn="postgresql://kg-only", admin_pg_dsn=None)
+    with patch("memory_mcp.server.load_config", return_value=cfg), \
+         patch("memory_mcp.admin.pg_store.PgAdminStore") as pg:
+        app = create_app(memory_store=mstore)
+    pg.assert_not_called()
+    assert app.state.admin_store is None and app.state.tenants is None
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://localhost") as c:
+        rest = Caller("rest", c)
+        assert (await rest.save(LEGACY, name="plain")).ok
+        r = await rest.list(LEGACY, tenant="alpha")
+        assert (r.status, r.code) == (400, "tenant_not_supported")
+    assert mstore.find_by_name("plain", "global", collection=COLLECTION) is not None
