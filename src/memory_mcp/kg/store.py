@@ -1,6 +1,8 @@
 """Qdrant-backed graph storage: per-graph entity/edge collections + shared xrefs."""
 from __future__ import annotations
 
+import re
+
 import time
 from dataclasses import dataclass
 from typing import Iterator
@@ -20,6 +22,9 @@ _SCROLL_PAGE = 1000
 
 def entities_collection(graph: str) -> str:
     return f"kg_{graph}_entities"
+
+
+_ENTITIES_RE = re.compile(r"^kg_(.+)_entities$")
 
 
 def edges_collection(graph: str) -> str:
@@ -83,6 +88,15 @@ class QdrantGraphStore:
             self._create(edges, {})
         self._index(ents, ["key", "provider", "kind", "type", "memory_ids", "aliases", "native_id", "display_name"], ["valid_from_ts", "valid_to_ts"])
         self._index(edges, ["src", "dst", "relation", "evidence_memory_ids"], ["valid_from_ts", "valid_to_ts"])
+
+    def graph_ids(self) -> list[str]:
+        """Graphs whose entity collection holds at least one point."""
+        out = []
+        for name in sorted(self._existing()):
+            m = _ENTITIES_RE.match(name)
+            if m and (self.client.get_collection(name).points_count or 0) > 0:
+                out.append(m.group(1))
+        return out
 
     def ensure_xrefs(self) -> None:
         if XREFS not in self._existing():

@@ -389,3 +389,67 @@ def test_pg_bootstrap_lock_serializes_two_workers():
             conn.execute("DROP SCHEMA IF EXISTS mt_admin CASCADE")
         for s in stores:
             s.close()
+
+
+# ── bootstrap adopts the KG graphs that hold data, not the YAML registry ─────────
+class FakeGraphStore:
+    def __init__(self, counts):
+        self.counts = counts
+
+    def graph_ids(self):
+        return list(self.counts)
+
+    def count_entities(self, g, filt):
+        return self.counts[g]
+
+
+def test_graphs_with_data_takes_store_graphs_with_entities():
+    from memory_mcp.server import graphs_with_data
+    store = FakeGraphStore({"beta": 1, "alpha": 3, "empty": 0, "Not-Valid": 5})
+    assert graphs_with_data(store) == ["alpha", "beta"]
+
+
+def _entity(native_id: str):
+    from memory_mcp.kg.models import Entity
+    return Entity(key=f"logical:{native_id}", provider="logical", type="jira_issue", kind="ticket",
+                  native_id=native_id, display_name=native_id, created_at="2026-01-01T00:00:00+00:00",
+                  updated_at="2026-01-01T00:00:00+00:00", valid_from="2026-01-01T00:00:00+00:00")
+
+
+def test_qdrant_graph_ids_lists_only_graphs_with_entities():
+    from memory_mcp.kg.store import QdrantGraphStore
+    store = QdrantGraphStore(QdrantClient(":memory:"), StubEmbedder())
+    for g in ("beta", "empty", "two_part"):
+        store.ensure_graph(g)
+    store.ensure_xrefs()
+    store.upsert_entity("beta", _entity("B-1"))
+    store.upsert_entity("two_part", _entity("T-1"))
+    assert store.graph_ids() == ["beta", "two_part"]
+
+
+def test_bootstrap_reads_graphs_only_when_it_runs(svc, admin):
+    calls = []
+    svc.bootstrap("alpha", None, lambda: calls.append(1) or ["beta"])
+    assert calls == [1] and [t.id for t in admin.list_tenants()] == ["alpha", "beta"]
+    svc.bootstrap("alpha", None, lambda: calls.append(1) or ["gamma"])  # already done: not evaluated
+    assert calls == [1]
+
+
+def test_app_bootstrap_adopts_graphs_with_data_not_registry(tmp_path):
+    from unittest.mock import patch
+
+    from memory_mcp.kg.store import QdrantGraphStore
+    from memory_mcp.server import create_app
+    from tests.admin.test_kg_isolation import _config_dir
+    from tests.admin.test_memory_isolation import _cfg
+
+    qc = QdrantClient(":memory:")
+    kg_store = QdrantGraphStore(qc, StubEmbedder())
+    kg_store.ensure_graph("gamma")  # data from before multi-tenant mode, not in the YAML
+    kg_store.upsert_entity("gamma", _entity("G-1"))
+    cfg = _cfg(kg_enabled=True, kg_config_dir=_config_dir(
+        tmp_path, "graphs:\n  alpha: {name: Alpha}\n  beta: {name: Beta}\n"))  # beta stays empty
+    admin = InMemoryAdminStore()
+    with patch("memory_mcp.server.load_config", return_value=cfg):
+        create_app(admin_store=admin, memory_store=MemoryStore("unused", embedder=StubEmbedder(), client=qc))
+    assert [t.id for t in admin.list_tenants()] == ["alpha", "gamma"]

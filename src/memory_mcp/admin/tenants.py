@@ -70,13 +70,17 @@ class TenantService:
         return t.collection
 
     # lifecycle
-    def bootstrap(self, tenant_id: str | None, name: str | None, existing_graphs: list[str]) -> None:
+    def bootstrap(self, tenant_id: str | None, name: str | None,
+                  existing_graphs: list[str] | Callable[[], list[str]]) -> None:
         """Adopt existing data as tenants. Finished only once `default_tenant` is set (written last),
         so a partial failure is retried, skipping rows already inserted.
 
         Several workers may start at once: the store's bootstrap lock lets one run it while the
         others wait and then find it finished. Each step also tolerates work another process
-        already did (an existing collection or tenant row), in case the lock is not shared."""
+        already did (an existing collection or tenant row), in case the lock is not shared.
+
+        `existing_graphs` (or a callable returning them, evaluated only if bootstrap runs) are
+        the KG graphs to adopt as further tenants."""
         if self._store.get_settings().get("default_tenant"):
             return
         if not tenant_id:
@@ -88,7 +92,8 @@ class TenantService:
                 self._invalidate()
                 return
             wanted = [(tenant_id, name or tenant_id, COLLECTION)]
-            wanted += [(g, g, f"memories_{g}") for g in existing_graphs if g != tenant_id]
+            graphs = existing_graphs() if callable(existing_graphs) else existing_graphs
+            wanted += [(g, g, f"memories_{g}") for g in graphs if g != tenant_id]
             for tid, tname, collection in wanted:
                 self._memory.ensure_collection(collection)
                 if self._kg is not None:

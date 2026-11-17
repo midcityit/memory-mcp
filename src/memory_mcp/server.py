@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Depends, Request
 from fastapi.responses import JSONResponse
@@ -12,9 +13,13 @@ from memory_mcp.admin.rest import build_admin_router
 from memory_mcp.admin.store import AdminStore
 from memory_mcp.admin.tenants import TenantService
 from memory_mcp.config import cfg_str, load_config, Config
+from memory_mcp.kg.models import GRAPH_ID_RE
+from memory_mcp.kg.store import EntityFilter
 from memory_mcp.store import MemoryStore, MemoryRecord, record_dict
 from memory_mcp import mcp_tools
 from memory_mcp.telemetry import setup_telemetry
+
+log = logging.getLogger(__name__)
 
 TENANT_HEADER = "x-mt-tenant"
 
@@ -31,6 +36,19 @@ def build_admin_store(cfg: Config) -> AdminStore | None:
     store = PgAdminStore(dsn)
     store.ensure_schema()
     return store
+
+
+def graphs_with_data(kg_store) -> list[str]:
+    """KG graph ids that hold data, for bootstrap to adopt as tenants (not the YAML registry,
+    whose graphs may be empty). Ids that are not valid tenant ids are skipped with a warning."""
+    out = []
+    for g in kg_store.graph_ids():
+        if not GRAPH_ID_RE.match(g):
+            log.warning("bootstrap: KG graph %r is not a valid tenant id; not adopted", g)
+            continue
+        if kg_store.count_entities(g, EntityFilter()) > 0:
+            out.append(g)
+    return sorted(out)
 
 
 def _rest_tenant(request: Request) -> str | None:
@@ -76,7 +94,7 @@ def create_app(*, admin_store: AdminStore | None = None, memory_store: MemorySto
     if admin_store is not None:
         tenants = TenantService(admin_store, store, kg.store if kg is not None else None)
         tenants.bootstrap(cfg.bootstrap_tenant_id, cfg.bootstrap_tenant_name,
-                          existing_graphs=list(kg.registry.graphs) if kg is not None else [])
+                          existing_graphs=(lambda: graphs_with_data(kg.store)) if kg is not None else [])
 
     # Resolve the caller (scoped key, legacy API_TOKEN, or UI acting for a user) on every
     # path except /health, before routing; handlers and MCP tools read the Principal.
