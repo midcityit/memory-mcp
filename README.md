@@ -176,13 +176,13 @@ Key details:
 | Env Var | Required | Default | Description |
 |---------|----------|---------|-------------|
 | `QDRANT_URL` | ✅ | — | Qdrant HTTP URL, e.g. `http://qdrant:6333` |
-| `API_TOKEN` | ✅ unless `UI_TOKEN` is set | — | Legacy shared bearer token. Optional once `UI_TOKEN` is set and the legacy token is retired (see below). Must differ from `UI_TOKEN` |
+| `API_TOKEN` | ✅ in legacy mode; in multi-tenant mode unless `UI_TOKEN` is set | — | Legacy shared bearer token. Optional once `ADMIN_PG_DSN` and `UI_TOKEN` are set and the legacy token is retired (see below). Must differ from `UI_TOKEN` |
 | `STALE_DAYS` | ❌ | `30` | Days before memories get stale warning |
 | `DEFAULT_LIST_LIMIT` | ❌ | `1000` | Default max records returned by list endpoint |
 | `MCP_ALLOWED_HOSTS` | ❌ | `localhost` | Comma-separated allowed hosts for MCP transport |
 | `OTLP_ENDPOINT` | ❌ | `http://otel-collector.monitoring.svc.cluster.local:4317` | OTLP gRPC endpoint; empty string disables |
 | `ADMIN_PG_DSN` | ❌ | — | Postgres DSN for the admin database. Setting it turns on multi-tenant mode. Opt-in only: it never falls back to `KG_PG_DSN`, so an instance that already has `KG_PG_DSN` stays in legacy mode until this is set |
-| `UI_TOKEN` | ❌ | — | Bearer token used by memory-ui. Must differ from `API_TOKEN` |
+| `UI_TOKEN` | ❌ | — | Bearer token used by memory-ui in multi-tenant mode. Accepted only when `ADMIN_PG_DSN` is set; a legacy-mode server rejects it (and refuses to start with `UI_TOKEN` but no `API_TOKEN`). Must differ from `API_TOKEN` |
 | `ADMIN_GROUP_IDS` | ❌ | — | Comma-separated group ids whose members may use the admin API |
 | `BOOTSTRAP_TENANT_ID` | ❌ | — | Required on the first start in multi-tenant mode (while no tenants exist): the first tenant, which adopts the existing `memories` collection |
 | `BOOTSTRAP_TENANT_NAME` | ❌ | id | Display name for the bootstrap tenant |
@@ -199,6 +199,15 @@ Without `ADMIN_PG_DSN` the server runs in legacy mode: one shared token (`API_TO
 - **Agent stamping.** Memories and knowledge-graph writes (entities, edges, xrefs, batches and imports, including per-item `agent` fields) made with a scoped key are stamped with the key's agent name, and those made through the UI with `ui:<user name>`, not whatever the caller claims. The legacy token keeps the declared agent.
 - **Legacy token.** `API_TOKEN` keeps working and acts on the default tenant. Once the Keys screen shows it unused, retire it by removing `API_TOKEN` (and keep `UI_TOKEN`).
 - **`/docs`.** The API docs page now needs a token like every other route.
+- **memory-ui and legacy mode.** Against a legacy-mode backend (no `ADMIN_PG_DSN`) the UI must use `API_TOKEN` as its bearer token: `UI_TOKEN` only works once `ADMIN_PG_DSN` is set.
+
+### Upgrading to multi-tenant mode
+
+Make these changes together, in one deploy, so the UI never holds a token the server rejects:
+
+1. On memory-mcp set `ADMIN_PG_DSN`, `UI_TOKEN`, `ADMIN_GROUP_IDS` and `BOOTSTRAP_TENANT_ID` (optionally `BOOTSTRAP_TENANT_NAME`). Keep `API_TOKEN` so existing agents keep working on the default tenant.
+2. In the same change, switch memory-ui's bearer token from `API_TOKEN` to `UI_TOKEN`.
+3. After the first start (which adopts `memories` as the bootstrap tenant), create the other tenants and their keys, split shared data if needed (below), move agents to scoped keys, and retire `API_TOKEN` once the Keys screen shows it unused.
 
 ## Splitting an existing collection
 
