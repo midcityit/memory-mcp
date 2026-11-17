@@ -58,6 +58,18 @@ class ApplyError(RuntimeError):
     """Apply stopped before deleting anything from the source."""
 
 
+class DeletePhaseError(RuntimeError):
+    """Apply failed while deleting copied points from the source.
+
+    `deleted` points were already removed (each only after its copy was verified);
+    the rest are still in the source. A rerun is safe and finishes the job.
+    """
+
+    def __init__(self, deleted: int, cause: BaseException):
+        super().__init__(str(cause))
+        self.deleted = deleted
+
+
 @dataclass(frozen=True)
 class Rule:
     kind: str  # "source_repo" | "tag"
@@ -231,14 +243,19 @@ def apply(client: QdrantClient, source: str, plan: list[tuple[str, str]],
                     f"{target!r} are missing or differ from the source; nothing deleted"
                 )
 
-    for tenant, ids in moves.items():
-        for batch in _chunks(ids):
-            same, changed = _confirm_unchanged(client, source, collections[tenant], batch)
-            if same:
-                client.delete(source, points_selector=PointIdsList(points=same))
-            result[tenant]["deleted"] += len(same)
-            result[tenant]["changed_after_copy"] += len(changed)
-            result[tenant]["changed_ids"] += changed
+    deleted = 0
+    try:
+        for tenant, ids in moves.items():
+            for batch in _chunks(ids):
+                same, changed = _confirm_unchanged(client, source, collections[tenant], batch)
+                if same:
+                    client.delete(source, points_selector=PointIdsList(points=same))
+                deleted += len(same)
+                result[tenant]["deleted"] += len(same)
+                result[tenant]["changed_after_copy"] += len(changed)
+                result[tenant]["changed_ids"] += changed
+    except Exception as e:
+        raise DeletePhaseError(deleted, e) from e
     return result
 
 
@@ -297,10 +314,36 @@ def build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--apply", action="store_true", help="copy, verify and delete (default: dry run)")
     ap.add_argument("--collection-prefix", default="memories_",
                     help="target collection = prefix + tenant (default: memories_)")
+    ap.add_argument("--admin-pg-dsn", default=os.environ.get("ADMIN_PG_DSN"),
+                    help="admin database DSN (default: env ADMIN_PG_DSN); when given, warn about "
+                         "target tenants that have no row in mt_admin")
     return ap
 
 
-def main(argv: list[str] | None = None) -> int:
+TenantLookup = Callable[[str], object]
+
+
+def _pg_tenant_lookup(dsn: str) -> TenantLookup:
+    from memory_mcp.admin.pg_store import PgAdminStore
+    return PgAdminStore(dsn, min_size=1, max_size=1).get_tenant
+
+
+def warn_unknown_tenants(tenants: Iterable[str], lookup: TenantLookup | None) -> list[str]:
+    """Warn (stderr) about each tenant with no row in mt_admin; returns them. Without a
+    lookup, says that tenants are not checked."""
+    if lookup is None:
+        print("note: tenants are not checked against mt_admin (pass --admin-pg-dsn or set ADMIN_PG_DSN)")
+        return []
+    unknown = sorted(t for t in set(tenants) if lookup(t) is None)
+    for t in unknown:
+        print(f"warning: tenant {t!r} has no row in mt_admin; create it before agents use it "
+              "(its memories would be unreachable)", file=sys.stderr)
+    return unknown
+
+
+def main(argv: list[str] | None = None, *,
+         tenant_lookup_factory: Callable[[str], TenantLookup] = _pg_tenant_lookup) -> int:
+    """`tenant_lookup_factory(dsn)` returns a tenant-id -> row-or-None lookup (tests inject one)."""
     args = build_parser().parse_args(argv)
     try:
         rules = [parse_rule(r) for r in args.rule]
@@ -312,6 +355,12 @@ def main(argv: list[str] | None = None) -> int:
     if not args.qdrant_url:
         print("error: --qdrant-url or QDRANT_URL required", file=sys.stderr)
         return 2
+
+    try:
+        lookup = tenant_lookup_factory(args.admin_pg_dsn) if args.admin_pg_dsn else None
+        warn_unknown_tenants({r.tenant for r in rules} | set(overrides.values()) | {default}, lookup)
+    except Exception as e:  # noqa: BLE001 - the check is advisory
+        print(f"warning: could not check tenants in mt_admin: {type(e).__name__}: {e}", file=sys.stderr)
 
     client = QdrantClient(url=args.qdrant_url)
     points = list(scroll_all(client, args.source))
@@ -334,6 +383,11 @@ def main(argv: list[str] | None = None) -> int:
                    for t in counts | {default: 0}}
     try:
         result = apply(client, args.source, planned, collections, make_snapshot_fn(client))
+    except DeletePhaseError as e:
+        print(f"error while deleting from {args.source!r}: {e}; {e.deleted} point(s) were already "
+              f"deleted from {args.source!r} (each after its copy was verified), the rest are still "
+              "there. Rerunning --apply is safe and finishes the split.", file=sys.stderr)
+        return 1
     except Exception as e:
         print(f"error: {e}; nothing deleted from {args.source!r}", file=sys.stderr)
         return 1

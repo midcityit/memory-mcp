@@ -2,6 +2,7 @@ import csv
 import importlib.util
 import math
 import random
+import re
 import sys
 import uuid
 from pathlib import Path
@@ -288,3 +289,77 @@ def test_unmatched_override_warns(client, monkeypatch, tmp_path, capsys):
     monkeypatch.setattr(sm, "QdrantClient", lambda url: client)
     assert sm.main(["--qdrant-url", "x", "--default", "alpha", "--overrides", str(ov)]) == 0
     assert "override id not-a-point matches no point" in capsys.readouterr().err
+
+
+# --- delete-phase failure and tenant check -----------------------------------
+
+def test_failure_during_delete_reports_deleted_count_and_rerun_finishes(client, monkeypatch, capsys):
+    monkeypatch.setattr(sm, "QdrantClient", lambda url: client)
+    monkeypatch.setattr(sm, "make_snapshot_fn", lambda c: snap_ok)
+    real_delete, calls = client.delete, []
+
+    def flaky_delete(*a, **kw):
+        calls.append(1)
+        if len(calls) == 2:  # first tenant's delete went through, the second one fails
+            raise RuntimeError("qdrant went away")
+        return real_delete(*a, **kw)
+    monkeypatch.setattr(client, "delete", flaky_delete)
+    assert sm.main(_main_args()) == 1
+    err = capsys.readouterr().err
+    assert "nothing deleted" not in err
+    assert "qdrant went away" in err and "already deleted" in err and "Rerunning --apply is safe" in err
+    assert re.search(r"\b[12] point\(s\) were already deleted", err), err
+
+    monkeypatch.setattr(client, "delete", real_delete)
+    assert sm.main(_main_args()) == 0
+    assert ids(client, SRC) == {str(uuid.UUID(int=1)), str(uuid.UUID(int=5))}
+
+
+def test_failure_before_delete_still_says_nothing_deleted(client, monkeypatch, capsys):
+    monkeypatch.setattr(sm, "QdrantClient", lambda url: client)
+
+    def no_snapshot(_c):
+        def snap(_coll):
+            raise sm.ApplyError("snapshot failed")
+        return snap
+    monkeypatch.setattr(sm, "make_snapshot_fn", no_snapshot)
+    assert sm.main(_main_args()) == 1
+    assert "nothing deleted from 'memories'" in capsys.readouterr().err
+
+
+def test_unknown_target_tenants_warn_when_admin_dsn_given(client, monkeypatch, capsys):
+    from memory_mcp.admin.models import Tenant
+    from memory_mcp.admin.store import InMemoryAdminStore
+
+    admin = InMemoryAdminStore()
+    admin.insert_tenant(Tenant("alpha", "Alpha", "", "memories", "active"), by="t")
+    admin.insert_tenant(Tenant("beta", "Beta", "", "memories_beta", "active"), by="t")
+    monkeypatch.setattr(sm, "QdrantClient", lambda url: client)
+    dsns = []
+
+    def factory(dsn):
+        dsns.append(dsn)
+        return admin.get_tenant
+    args = ["--qdrant-url", "x", "--default", "alpha", "--rule", "source_repo=org-b/*:beta",
+            "--rule", "tag=gamma:gamma", "--admin-pg-dsn", "postgresql://admin-db/x"]
+    assert sm.main(args, tenant_lookup_factory=factory) == 0
+    cap = capsys.readouterr()
+    assert dsns == ["postgresql://admin-db/x"]
+    assert "tenant 'gamma' has no row in mt_admin" in cap.err
+    assert "'beta' has no row" not in cap.err and "'alpha' has no row" not in cap.err
+    assert "not checked" not in cap.out
+
+
+def test_tenants_not_checked_without_admin_dsn(client, monkeypatch, capsys):
+    monkeypatch.delenv("ADMIN_PG_DSN", raising=False)
+    monkeypatch.setattr(sm, "QdrantClient", lambda url: client)
+    args = ["--qdrant-url", "x", "--default", "alpha", "--rule", "tag=gamma:gamma"]
+    assert sm.main(args, tenant_lookup_factory=lambda dsn: pytest.fail("looked up tenants")) == 0
+    cap = capsys.readouterr()
+    assert "tenants are not checked against mt_admin" in cap.out
+    assert "has no row" not in cap.err
+
+
+def test_admin_dsn_defaults_to_env(monkeypatch):
+    monkeypatch.setenv("ADMIN_PG_DSN", "postgresql://from-env/x")
+    assert sm.build_parser().parse_args(["--default", "alpha"]).admin_pg_dsn == "postgresql://from-env/x"
