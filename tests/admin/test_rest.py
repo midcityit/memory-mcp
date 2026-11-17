@@ -638,7 +638,8 @@ async def test_unexpected_admin_error_is_logged_with_traceback(env, monkeypatch,
 
 
 async def test_store_errors_are_logged_without_traceback(env, monkeypatch, caplog):
-    import psycopg
+    # CI installs only the `dev` extra; psycopg comes with the `postgres` extra.
+    psycopg = pytest.importorskip("psycopg")
 
     def down(*_a, **_k):
         raise psycopg.OperationalError("connection refused")
