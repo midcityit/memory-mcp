@@ -13,6 +13,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from memory_mcp.admin.audit import NullAudit
+from memory_mcp.admin.models import AuthzError
 from memory_mcp.kg.authz import KGGuard, fq_graph
 from memory_mcp.kg.models import KGError
 from memory_mcp.kg.service import EDGE_FIELDS, ENTITY_FIELDS, count_error
@@ -34,14 +35,19 @@ ROUTE_ACTION: dict[tuple[str, str], str] = {
     ("DELETE", "/kg/{graph}/entities/{key:path}"): "kg_delete_entity",
     ("DELETE", "/kg/xref"): "kg_delete_xref",
 }
+A_XREF = "kg_xref"  # action for each xref inside an import
 
 
-def _run(fn, *args, **kwargs):
+def _run(scrub: Callable[[dict], dict], fn, *args, **kwargs):
     try:
         return fn(*args, **kwargs)
     except KGError as e:
         count_error(e.code)
-        raise HTTPException(status_code=404 if e.code in _404 else 422, detail=e.to_dict())
+        raise HTTPException(status_code=404 if e.code in _404 else 422, detail=scrub(e.to_dict()))
+
+
+def _xref_target(x: dict) -> str:
+    return f"{x['src']} -{x['relation']}-> {x['dst']}"
 
 
 def _graphs_param(graphs: str) -> str | list[str]:
@@ -91,10 +97,8 @@ def build_router(service, query, require_token: Callable, guard: KGGuard | None 
     def act(method: str, path: str) -> str:
         return ROUTE_ACTION[(method, path)]  # KeyError at build time if a route has no mapping
 
-    def written(p, action, graph, target, result):
-        if result.get("status") != "rejected":
-            guard.written(p, action, graph, target)
-        return result
+    def run(p, fn, *args, **kwargs):
+        return _run(lambda d: guard.scrub(p, d), fn, *args, **kwargs)
 
     a_graphs = act("GET", "/kg/graphs")
 
@@ -111,25 +115,21 @@ def build_router(service, query, require_token: Callable, guard: KGGuard | None 
     @r.get("/catalog")
     def catalog(provider: str | None = None, kind: str | None = None, search: str | None = None,
                 p=Depends(require_token)):
-        allowed = guard.graphs(p, a_catalog, "*")
-        out = _run(service.reg.describe_catalog, provider, kind, search)
-        if allowed != "*":
-            out["graphs"] = sorted(allowed)
-        return out
+        return guard.catalog(p, a_catalog, lambda: run(p, service.reg.describe_catalog, provider, kind, search))
 
     a_overview = act("GET", "/kg/overview")
 
     @r.get("/overview")
     def overview(graphs: str = "*", p=Depends(require_token)):
         gs = guard.graphs(p, a_overview, _graphs_param(graphs))
-        return _run(query.overview, gs, visible=guard.visible(p))
+        return run(p, query.overview, gs, visible=guard.visible(p))
 
     a_resolve = act("POST", "/kg/resolve")
 
     @r.post("/resolve")
     def resolve(req: ResolveReq, p=Depends(require_token)):
         gs = guard.graphs(p, a_resolve, req.graphs)
-        return _run(query.resolve, req.query, gs, req.provider, req.kind, req.type, req.include_retired, req.limit)
+        return run(p, query.resolve, req.query, gs, req.provider, req.kind, req.type, req.include_retired, req.limit)
 
     a_get = act("GET", "/kg/{graph}/entities/{key:path}")
 
@@ -137,14 +137,14 @@ def build_router(service, query, require_token: Callable, guard: KGGuard | None 
     def get_entity(graph: str, key: str, as_of: str | None = None, include_history: bool = False,
                    p=Depends(require_token)):
         guard.graph(p, a_get, graph, key)
-        return _run(query.get_entity, graph, key, as_of, include_history, visible=guard.visible(p))
+        return run(p, query.get_entity, graph, key, as_of, include_history, visible=guard.visible(p))
 
     a_traverse = act("POST", "/kg/{graph}/traverse")
 
     @r.post("/{graph}/traverse")
     def traverse(graph: str, req: TraverseReq, p=Depends(require_token)):
         guard.graph(p, a_traverse, graph, req.start)
-        return _run(query.traverse, graph, req.start, req.direction, req.relations, req.kinds, req.max_depth,
+        return run(p, query.traverse, graph, req.start, req.direction, req.relations, req.kinds, req.max_depth,
                     req.as_of, req.follow_xrefs, req.limit, visible=guard.visible(p))
 
     a_path = act("POST", "/kg/{graph}/path")
@@ -152,21 +152,21 @@ def build_router(service, query, require_token: Callable, guard: KGGuard | None 
     @r.post("/{graph}/path")
     def path(graph: str, req: PathReq, p=Depends(require_token)):
         guard.graph(p, a_path, graph)
-        return _run(query.path, graph, req.src, req.dst, req.relations, req.max_depth)
+        return run(p, query.path, graph, req.src, req.dst, req.relations, req.max_depth)
 
     a_impact = act("POST", "/kg/{graph}/impact")
 
     @r.post("/{graph}/impact")
     def impact(graph: str, req: ImpactReq, p=Depends(require_token)):
         guard.graph(p, a_impact, graph, req.key)
-        return _run(query.impact, graph, req.key, req.max_depth, req.as_of)
+        return run(p, query.impact, graph, req.key, req.max_depth, req.as_of)
 
     a_export = act("GET", "/kg/{graph}/export")
 
     @r.get("/{graph}/export")
     def export(graph: str, p=Depends(require_token)):
         guard.graph(p, a_export, graph)
-        _run(service.reg.require_graph, graph)
+        run(p, service.reg.require_graph, graph)
         visible = guard.visible(p)
 
         def lines():
@@ -187,7 +187,7 @@ def build_router(service, query, require_token: Callable, guard: KGGuard | None 
     @r.post("/{graph}/import")
     async def import_(graph: str, request: Request, p=Depends(require_token)):
         guard.graph(p, a_import, graph)
-        _run(service.reg.require_graph, graph)
+        run(p, service.reg.require_graph, graph)
         ents, edges, xrefs = [], [], []
 
         def bad(n, msg):
@@ -218,21 +218,28 @@ def build_router(service, query, require_token: Callable, guard: KGGuard | None 
                 xrefs.append(rec)
             else:
                 raise bad(n, f"missing or unknown record type: {record!r}")
-        # Every xref needs write access on both of its graphs; check all before writing anything.
+        # Each xref is authorized as kg_xref on both of its graphs and must touch this graph;
+        # everything is checked before anything is written.
         for x in xrefs:
-            guard.fq(p, a_import, x["src"])
-            guard.fq(p, a_import, x["dst"])
-        result = written(p, a_import, graph, None, _run(service.batch, graph, ents, edges, "import"))
+            target = _xref_target(x)
+            ends = [guard.fq(p, A_XREF, x["src"], target), guard.fq(p, A_XREF, x["dst"], target)]
+            if guard.enforcing and graph not in ends:
+                raise guard.deny(p, A_XREF, graph, target, AuthzError(
+                    403, "xref_outside_graph", f"An xref imported into '{graph}' must have an endpoint in it"))
+        result = guard.scrub(p, run(p, service.batch, graph, ents, edges, "import"))
+        guard.written(p, a_import, graph, None, result)
         if result["status"] != "ok":
             raise HTTPException(422, detail=result)
         xr = {"imported": 0, "errors": []}
         for x in xrefs:
+            target = _xref_target(x)
             try:
                 service.xref(x["src"], x["relation"], x["dst"], x["note"], x.get("evidence_memory_ids"),
                              x.get("agent", "import"))
                 xr["imported"] += 1
+                guard.written(p, A_XREF, [fq_graph(x["src"]), fq_graph(x["dst"])], target)
             except KGError as e:
-                xr["errors"].append({"xref": f"{x['src']} -{x['relation']}-> {x['dst']}", **e.to_dict()})
+                xr["errors"].append({"xref": target, **guard.scrub(p, e.to_dict())})
         return {**result, "xrefs": xr}
 
     a_delete = act("DELETE", "/kg/{graph}/entities/{key:path}")
@@ -243,16 +250,16 @@ def build_router(service, query, require_token: Callable, guard: KGGuard | None 
         if not hard:
             raise HTTPException(400, detail={"error": "hard_required",
                                              "message": "Use kg_retire_entity to decommission; pass hard=true to purge"})
-        return written(p, a_delete, graph, key,
-                       _run(service.delete_entity, graph, key, True, xref_removable=guard.xref_removable(p)))
+        deletion = guard.xref_deletion(p, graph)
+        result = run(p, service.delete_entity, graph, key, True, xref_removable=deletion)
+        return guard.written_deletion(p, a_delete, graph, key, result, deletion)
 
     a_delete_xref = act("DELETE", "/kg/xref")
 
     @r.delete("/xref")
     def delete_xref(src: str, relation: str, dst: str, p=Depends(require_token)):
-        target = f"{src} -{relation}-> {dst}"
-        guard.fq(p, a_delete_xref, src, target)
-        guard.fq(p, a_delete_xref, dst, target)
-        return written(p, a_delete_xref, fq_graph(src), target, _run(service.delete_xref, src, relation, dst))
+        target = _xref_target({"src": src, "relation": relation, "dst": dst})
+        graphs = [guard.fq(p, a_delete_xref, src, target), guard.fq(p, a_delete_xref, dst, target)]
+        return guard.written(p, a_delete_xref, graphs, target, run(p, service.delete_xref, src, relation, dst))
 
     return r

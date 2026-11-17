@@ -12,7 +12,7 @@ from opentelemetry import metrics
 from memory_mcp.admin.audit import NullAudit
 from memory_mcp.admin.auth import principal_from_ctx
 from memory_mcp.admin.models import AuthzError, Principal
-from memory_mcp.kg.authz import KGGuard, fq_graph
+from memory_mcp.kg.authz import KGGuard
 from memory_mcp.kg.models import KGError
 from memory_mcp.kg.service import count_error
 
@@ -41,17 +41,15 @@ class _Call:
     def graphs(self, graphs):
         return self.guard.graphs(self.p, self.action, graphs)
 
-    def fq(self, fq: str, target: str | None = None) -> None:
-        self.guard.fq(self.p, self.action, fq, target)
+    def fq(self, fq: str, target: str | None = None) -> str | None:
+        return self.guard.fq(self.p, self.action, fq, target)
 
     @property
     def visible(self) -> frozenset[str] | None:
         return self.guard.visible(self.p)
 
-    def written(self, graph: str | None, target: str | None, result: dict) -> dict:
-        if result.get("status") != "rejected":
-            self.guard.written(self.p, self.action, graph, target)
-        return result
+    def written(self, graphs, target: str | None, result: dict) -> dict:
+        return self.guard.written(self.p, self.action, graphs, target, self.guard.scrub(self.p, result))
 
 
 def _xref_target(src: str, relation: str, dst: str) -> str:
@@ -68,6 +66,7 @@ def register_resolved(mcp, deps: Callable[[], Deps]) -> None:
 
     def run(ctx: Context, tool: str, graph, body: Callable[[Any, Any, _Call], dict]) -> dict:
         t0 = time.monotonic()
+        guard, p = _OPEN, None
         try:
             service, query, guard = deps()
             guard = guard or _OPEN
@@ -75,7 +74,7 @@ def register_resolved(mcp, deps: Callable[[], Deps]) -> None:
             return body(service, query, _Call(guard, p, tool))
         except KGError as e:
             count_error(e.code)
-            return e.to_dict()
+            return guard.scrub(p, e.to_dict())
         except AuthzError as e:
             raise ToolError(e.message) from e
         finally:
@@ -137,8 +136,9 @@ def register_resolved(mcp, deps: Callable[[], Deps]) -> None:
         entities, or to clean up an endpoint whose xrefs would otherwise be left dangling."""
         def body(service, _query, c):
             c.graph(graph, key)
-            return c.written(graph, key, service.delete_entity(graph, key, confirm,
-                                                               xref_removable=c.guard.xref_removable(c.p)))
+            deletion = c.guard.xref_deletion(c.p, graph)
+            out = service.delete_entity(graph, key, confirm, xref_removable=deletion)
+            return c.guard.written_deletion(c.p, c.action, graph, key, out, deletion)
         return run(ctx, "kg_delete_entity", graph, body)
 
     @mcp.tool()
@@ -148,9 +148,8 @@ def register_resolved(mcp, deps: Callable[[], Deps]) -> None:
         target = _xref_target(src, relation, dst)
 
         def body(service, _query, c):
-            c.fq(src, target)
-            c.fq(dst, target)
-            return c.written(fq_graph(src), target, service.delete_xref(src, relation, dst))
+            graphs = [c.fq(src, target), c.fq(dst, target)]
+            return c.written(graphs, target, service.delete_xref(src, relation, dst))
         return run(ctx, "kg_delete_xref", None, body)
 
     @mcp.tool()
@@ -161,11 +160,7 @@ def register_resolved(mcp, deps: Callable[[], Deps]) -> None:
         Filter the type listing by provider, kind, or a case-insensitive substring (e.g. provider='azure',
         search='servicePrincipal')."""
         def body(service, _query, c):
-            graphs = c.graphs("*")
-            out = service.reg.describe_catalog(provider, kind, search)
-            if graphs != "*":
-                out["graphs"] = sorted(graphs)
-            return out
+            return c.guard.catalog(c.p, c.action, lambda: service.reg.describe_catalog(provider, kind, search))
         return run(ctx, "kg_catalog", None, body)
 
     @mcp.tool()
@@ -188,10 +183,8 @@ def register_resolved(mcp, deps: Callable[[], Deps]) -> None:
         target = _xref_target(src, relation, dst)
 
         def body(service, _query, c):
-            c.fq(src, target)
-            c.fq(dst, target)
-            return c.written(fq_graph(src), target,
-                             service.xref(src, relation, dst, note, evidence_memory_ids, agent))
+            graphs = [c.fq(src, target), c.fq(dst, target)]
+            return c.written(graphs, target, service.xref(src, relation, dst, note, evidence_memory_ids, agent))
         return run(ctx, "kg_xref", None, body)
 
     @mcp.tool()

@@ -277,14 +277,83 @@ async def test_rest_alpha_key_refused_on_beta_and_unknown_graph_alike(env, route
     assert beta.message.replace("beta", "X") == gamma.message.replace("gamma", "X")
 
 
+async def dump(e: Env, who, graph: str) -> dict[str, list]:
+    """A graph's export grouped by record type (entities, edges, xrefs it is the source of)."""
+    out = {"entity": [], "edge": [], "xref": []}
+    for ln in ok(await rest(e, who, "GET", f"/kg/{graph}/export")).splitlines():
+        rec = json.loads(ln)
+        out[rec["record"]].append(rec)
+    return out
+
+
+def ndjson(*records: dict) -> bytes:
+    return "\n".join(json.dumps(r) for r in records).encode()
+
+
 async def test_refusals_write_nothing_into_beta(env):
+    both = env.key(tenants=("alpha", "beta"))
+    await upsert(env, both, "alpha", "ALPHA-1")
+    await upsert(env, both, "beta", "BETA-1")
+    await upsert(env, both, "beta", "BETA-2")
+    before = await dump(env, both, "beta")
     k = env.key()
     for tool, args in tool_cases("beta").items():
         await mcp(env, k, tool, **args)
     for route in GRAPH_ROUTES:
         await call_route(env, k, route, "beta")
-    both = env.key(tenants=("alpha", "beta"))
-    assert ok(await mcp(env, both, "kg_find", graph="beta"))["items"] == []
+    # The same refusals with real endpoints, so only authorization stands in the way.
+    denied(await mcp(env, k, "kg_link", graph="beta", src=B1, relation="depends_on", dst=B2),
+           "tenant_forbidden", NO_ACCESS)
+    denied(await mcp(env, k, "kg_xref", src=f"alpha::{A1}", relation="pattern_from", dst=f"beta::{B1}", note="n"),
+           "tenant_forbidden", NO_ACCESS)
+    denied(await rest(env, k, "POST", "/kg/alpha/import", content=ndjson(
+        {"record": "xref", "src": f"alpha::{A1}", "relation": "pattern_from", "dst": f"beta::{B1}", "note": "n"})),
+        "tenant_forbidden", NO_ACCESS)
+    denied(await rest(env, k, "POST", "/kg/beta/import", content=ndjson(
+        {"record": "edge", "src": B1, "relation": "depends_on", "dst": B2})), "tenant_forbidden", NO_ACCESS)
+    after = await dump(env, both, "beta")
+    assert after == before and after["edge"] == [] and after["xref"] == []
+    assert (await dump(env, both, "alpha"))["xref"] == []
+    assert ok(await mcp(env, both, "kg_get_entity", graph="beta", key=B1))["xrefs"] == []
+
+
+async def test_listed_graph_that_is_not_a_tenant_is_refused_like_an_unheld_one(env):
+    k = env.key(tenants=("alpha", "alpah"))
+    for tool in ("kg_find", "kg_upsert_entity"):
+        args = tool_cases("alpah")[tool]
+        typo = await mcp(env, k, tool, **args)
+        unheld = await mcp(env, k, tool, **tool_cases("gamma")[tool])
+        denied(typo, "tenant_forbidden", f"{NO_ACCESS} 'alpah'")
+        assert typo.message.replace("alpah", "X") == unheld.message.replace("gamma", "X")
+        assert "suggestions" not in typo.message and "'alpha'" not in typo.message
+    typo = await env.client.get("/kg/alpah/entities/k", headers=_auth(k))
+    unheld = await env.client.get("/kg/gamma/entities/k", headers=_auth(k))
+    assert typo.status_code == unheld.status_code == 403
+    assert typo.json() == {"detail": f"{NO_ACCESS} 'alpah'", "code": "tenant_forbidden"}
+    assert unheld.json() == {"detail": f"{NO_ACCESS} 'gamma'", "code": "tenant_forbidden"}
+
+
+async def test_suggestions_never_name_graphs_outside_the_visible_set(env):
+    from memory_mcp.admin.audit import NullAudit
+    from memory_mcp.admin.models import Principal
+    from memory_mcp.kg.authz import KGGuard
+    guard = KGGuard(env.app.state.tenants, NullAudit())
+    p = Principal(kind="key", id="k", agent="a", roles={"beta": "editor"})
+    err = {"error": "unknown_graph", "suggestions": ["alpha", "beta", "kg_resolve to find the right key"],
+           "errors": [{"suggestions": ["alpha"]}]}
+    assert guard.scrub(p, err) == {"error": "unknown_graph",
+                                   "suggestions": ["beta", "kg_resolve to find the right key"],
+                                   "errors": [{"suggestions": []}]}
+
+
+async def test_xref_key_that_is_not_fully_qualified_is_400(env):
+    k = env.key()
+    await upsert(env, k, "alpha", "ALPHA-1")
+    r = await mcp(env, k, "kg_xref", src=A1, relation="pattern_from", dst=f"alpha::{A1}", note="n")
+    assert not r.ok and "is not a fully qualified key" in r.message
+    r = await rest(env, k, "DELETE", "/kg/xref", params={"src": f"alpha::{A1}", "relation": "pattern_from",
+                                                          "dst": "nope"})
+    assert (r.status, r.code) == (400, "invalid_key")
 
 
 # ── coverage: every route and tool is guarded by its mapped action ──────────────
@@ -562,3 +631,77 @@ async def test_legacy_mode_sees_every_graph_and_xref(legacy_env):
     assert len(ok(await mcp(e, LEGACY, "kg_get_entity", graph="alpha", key=A1))["xrefs"]) == 1
     assert (await mcp(e, LEGACY, "kg_find", graph="gamma")).data["error"] == "unknown_graph"
     assert e.audit.rows == []
+
+
+# ── import: xrefs are authorized as kg_xref and must touch the import's graph ──
+async def test_import_xref_needs_kg_xref(env):
+    both = await seed_xref(env)
+    k = env.key(tenants=("alpha", "beta"), denied=("kg_xref",))
+    body = ndjson({"record": "entity", "provider": "logical", "type": "jira_issue", "native_id": "ALPHA-8"},
+                  {"record": "xref", "src": f"alpha::{A1}", "relation": "similar_to", "dst": f"beta::{B1}",
+                   "note": "n"})
+    denied(await rest(env, k, "POST", "/kg/alpha/import", content=body), "tool_denied", "kg_xref is denied")
+    assert (await mcp(env, both, "kg_get_entity", graph="alpha", key="logical:ALPHA-8")).data["error"] == "not_found"
+    assert len(ok(await mcp(env, both, "kg_get_entity", graph="alpha", key=A1))["xrefs"]) == 1
+
+
+async def test_import_xref_between_two_other_graphs_is_refused(env):
+    env.app.state.tenants.create("delta", "Delta", "", by="test")
+    k = env.key(tenants=("alpha", "beta", "delta"))
+    await upsert(env, k, "beta", "BETA-1")
+    await upsert(env, k, "delta", "DELTA-1")
+    body = ndjson({"record": "entity", "provider": "logical", "type": "jira_issue", "native_id": "ALPHA-8"},
+                  {"record": "xref", "src": f"beta::{B1}", "relation": "similar_to", "dst": "delta::logical:DELTA-1",
+                   "note": "n"})
+    denied(await rest(env, k, "POST", "/kg/alpha/import", content=body), "xref_outside_graph",
+           "must have an endpoint in it")
+    assert (await dump(env, k, "alpha"))["entity"] == []
+    assert (await dump(env, k, "beta"))["xref"] == []
+    assert ok(await mcp(env, k, "kg_get_entity", graph="delta", key="logical:DELTA-1"))["xrefs"] == []
+
+
+# ── audit of cross-graph writes: one row per endpoint graph ─────────────────────
+def rows_for(e: Env, who: str, action: str) -> list[tuple]:
+    key_id = who.split("_")[1]
+    return [r[2:] for r in e.audit.rows if r[0] == key_id and r[1] == action]
+
+
+async def test_xref_create_and_delete_are_audited_under_both_graphs(env):
+    both = await seed_xref(env)
+    target = f"alpha::{A1} -pattern_from-> beta::{B1}"
+    assert rows_for(env, both, "kg_xref") == [("alpha", target, "allowed", None), ("beta", target, "allowed", None)]
+    ok(await mcp(env, both, "kg_delete_xref", **XREF))
+    assert rows_for(env, both, "kg_delete_xref") == [("alpha", target, "allowed", None),
+                                                     ("beta", target, "allowed", None)]
+
+
+async def test_imported_xrefs_are_audited_per_xref(env):
+    both = await seed_xref(env)
+    await upsert(env, both, "beta", "BETA-2")
+    body = ndjson({"record": "xref", "src": f"alpha::{A1}", "relation": "similar_to", "dst": f"beta::{B1}",
+                   "note": "n"},
+                  {"record": "xref", "src": f"beta::{B2}", "relation": "similar_to", "dst": f"alpha::{A1}",
+                   "note": "n"})
+    r = ok(await rest(env, both, "POST", "/kg/alpha/import", content=body))
+    assert r["xrefs"] == {"imported": 2, "errors": []}
+    assert rows_for(env, both, "kg_batch") == [("alpha", None, "allowed", None)]
+    t1, t2 = f"alpha::{A1} -similar_to-> beta::{B1}", f"beta::{B2} -similar_to-> alpha::{A1}"
+    assert rows_for(env, both, "kg_xref")[2:] == [  # [0:2] are seed_xref's own rows
+        ("alpha", t1, "allowed", None), ("beta", t1, "allowed", None),
+        ("beta", t2, "allowed", None), ("alpha", t2, "allowed", None)]
+
+
+@pytest.mark.parametrize("transport", ["mcp", "rest"])
+async def test_hard_delete_audits_each_graph_whose_xrefs_it_touched(env, transport):
+    both = await seed_xref(env)
+    beta_only = env.key(tenants=("beta",))
+    if transport == "mcp":
+        ok(await mcp(env, beta_only, "kg_delete_entity", graph="beta", key=B1, confirm=True))
+    else:
+        ok(await rest(env, beta_only, "DELETE", f"/kg/beta/entities/{B1}", params={"hard": "true"}))
+    assert rows_for(env, beta_only, "kg_delete_entity") == [("beta", B1, "allowed", None),
+                                                            ("alpha", B1, "allowed", {"xrefs_dangling": 1})]
+    await upsert(env, both, "alpha", "ALPHA-2")
+    ok(await mcp(env, both, "kg_delete_entity", graph="alpha", key=A1, confirm=True))
+    assert rows_for(env, both, "kg_delete_entity") == [("alpha", A1, "allowed", None),
+                                                       ("beta", A1, "allowed", {"xrefs_removed": 1})]

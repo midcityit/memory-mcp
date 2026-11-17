@@ -7,7 +7,7 @@ from collections import Counter
 from datetime import datetime, timedelta, timezone
 from typing import Callable
 
-from memory_mcp.kg.models import Edge, Entity, KGError, entity_point_id, fq_key, iso_to_ts
+from memory_mcp.kg.models import Edge, Entity, KGError, entity_point_id, fq_graph, fq_key, iso_to_ts
 from memory_mcp.kg.store import EntityFilter
 
 MAX_DEPTH = 6
@@ -81,8 +81,7 @@ def _visible_xrefs(xrefs, visible: frozenset[str] | None) -> list:
     """Xrefs whose two endpoint graphs are both in `visible` (all of them when None)."""
     if visible is None:
         return list(xrefs)
-    return [x for x in xrefs
-            if x.src.split("::", 1)[0] in visible and x.dst.split("::", 1)[0] in visible]
+    return [x for x in xrefs if fq_graph(x.src) in visible and fq_graph(x.dst) in visible]
 
 
 def _edge_dict(e: Edge, graph: str | None = None) -> dict:
