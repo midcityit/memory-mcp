@@ -1,10 +1,11 @@
 import dataclasses
+import asyncio
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Depends, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from typing import Optional
-from memory_mcp.admin.audit import NullAudit
+from memory_mcp.admin.audit import Audit, NullAudit, run_purge_loop
 from memory_mcp.admin.auth import Authenticator, PrincipalMiddleware, principal_from_request
 from memory_mcp.admin.memory_ops import MemoryOps
 from memory_mcp.admin.models import AuthzError, Principal
@@ -43,7 +44,9 @@ def _rest_tenant(request: Request) -> str | None:
     return next(iter(named), None)
 
 
-def create_app(*, admin_store: AdminStore | None = None, memory_store: MemoryStore | None = None) -> FastAPI:
+def create_app(*, admin_store: AdminStore | None = None, memory_store: MemoryStore | None = None,
+               audit_purge_interval_s: float | None = None,
+               audit_purge_first_delay_s: float | None = None) -> FastAPI:
     """Build the app. `admin_store` / `memory_store` override the configured ones (tests)."""
     cfg = load_config()
 
@@ -72,15 +75,28 @@ def create_app(*, admin_store: AdminStore | None = None, memory_store: MemorySto
     # Resolve the caller (scoped key, legacy API_TOKEN, or UI acting for a user) on every
     # path except /health, before routing; handlers and MCP tools read the Principal.
     authenticator = Authenticator(cfg, admin_store)
-    audit = NullAudit()
+    audit = Audit(admin_store, authenticator.settings) if admin_store is not None else NullAudit()
     # Settings come from the authenticator's cache so admin writes invalidate one place.
     ops = MemoryOps(store, tenants, authenticator.settings, audit)
     mcp_tools._init(ops, kg)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
-        async with mcp_tools.mcp.session_manager.run():
-            yield
+        purge_task = None
+        if admin_store is not None:
+            kw = {}
+            if audit_purge_interval_s is not None:
+                kw["interval_s"] = audit_purge_interval_s
+            if audit_purge_first_delay_s is not None:
+                kw["first_delay_s"] = audit_purge_first_delay_s
+            purge_task = asyncio.create_task(run_purge_loop(audit, **kw))
+        try:
+            async with mcp_tools.mcp.session_manager.run():
+                yield
+        finally:
+            if purge_task is not None:
+                purge_task.cancel()
+                await asyncio.gather(purge_task, return_exceptions=True)
 
     app = FastAPI(title="memory-mcp", lifespan=lifespan)
 

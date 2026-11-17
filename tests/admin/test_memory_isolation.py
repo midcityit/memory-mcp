@@ -101,7 +101,8 @@ def _build(multitenant: bool = True) -> Env:
     audit = RecordingAudit()
     cfg = _cfg() if multitenant else _cfg(ui_token=None)
     with patch("memory_mcp.server.load_config", return_value=cfg), \
-         patch("memory_mcp.server.NullAudit", return_value=audit):
+         patch("memory_mcp.server.NullAudit", return_value=audit), \
+         patch("memory_mcp.server.Audit", return_value=audit):
         app = create_app(admin_store=admin, memory_store=mstore)
     if multitenant:
         app.state.tenants.create("beta", "Beta", "", by="test")
