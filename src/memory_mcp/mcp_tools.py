@@ -1,5 +1,4 @@
 """MCP tool layer — memory tools over MemoryOps (authorization included), mounted at /mcp."""
-import dataclasses
 import os
 from collections.abc import Callable
 from typing import Any
@@ -11,6 +10,7 @@ from mcp.server.transport_security import TransportSecuritySettings
 from memory_mcp.admin.auth import principal_from_ctx
 from memory_mcp.admin.memory_ops import MemoryOps
 from memory_mcp.admin.models import AuthzError
+from memory_mcp.store import record_dict
 
 _allowed_hosts = [h.strip() for h in os.environ.get("MCP_ALLOWED_HOSTS", "localhost").split(",") if h.strip()]
 _transport_security = TransportSecuritySettings(allowed_hosts=_allowed_hosts)
@@ -75,7 +75,7 @@ def save_memory(
     """Save or update a memory by name within a source_repo."""
     record = _call(ctx, lambda ops, p: ops.save(
         p, tenant, type=type, name=name, content=content, source_repo=source_repo, agent=agent, tags=tags))
-    return dataclasses.asdict(record)
+    return record_dict(record)
 
 
 @mcp.tool()
@@ -90,7 +90,7 @@ def search_memories(
     """Semantic search across stored memories."""
     records = _call(ctx, lambda ops, p: ops.search(
         p, tenant, query=query, limit=limit, filter_type=filter_type, filter_source_repo=filter_source_repo))
-    return [dataclasses.asdict(r) for r in records]
+    return [record_dict(r) for r in records]
 
 
 @mcp.tool()
@@ -108,7 +108,7 @@ def list_memories(
     tag_list = tags.split(",") if tags else None
     records, next_offset = _call(ctx, lambda ops, p: ops.list(
         p, tenant, type=type, source_repo=source_repo, agent=agent, tags=tag_list, limit=limit, offset=offset))
-    result = {"memories": [dataclasses.asdict(r) for r in records]}
+    result = {"memories": [record_dict(r) for r in records]}
     if next_offset:
         result["next_offset"] = next_offset
     return result

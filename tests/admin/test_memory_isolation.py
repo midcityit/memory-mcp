@@ -758,3 +758,17 @@ async def test_stale_days_setting_changes_staleness_on_read(env, transport):
     assert await stale_flags() == {False}
     env.settings(stale_days="5")  # not a valid int: STALE_DAYS applies
     assert await stale_flags() == {False}
+
+
+async def test_mcp_returns_copied_from_and_save_keeps_it(env):
+    rid = env.seed("alpha", "copied")
+    record, vector = env.mstore.get_point(rid, COLLECTION)
+    prov = {"tenant": "beta", "id": "11111111-1111-1111-1111-111111111111", "at": "2026-01-01T00:00:00+00:00",
+            "by": "Ada Example"}
+    env.mstore.put_point(record, vector, COLLECTION, extra_payload={"copied_from": prov})
+    env.seed("alpha", "plain")
+    c, k = Caller("mcp", env.client), env.key()
+    listed = {m["name"]: m for m in (await c.list(k)).data}
+    assert listed["copied"]["copied_from"] == prov and "copied_from" not in listed["plain"]
+    assert (await c.save(k, name="copied", content="new content")).data["copied_from"] == prov
+    assert {m["name"]: m for m in (await c.search(k, "copied")).data}["copied"]["copied_from"] == prov

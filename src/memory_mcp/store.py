@@ -1,3 +1,4 @@
+import dataclasses
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -34,6 +35,22 @@ class MemoryRecord:
     created_at: str
     updated_at: str
     stale: bool = False
+    # Provenance of a copy between tenants ({tenant, id, at, by}); read from the payload,
+    # written only by put_point. None when the memory was not copied.
+    copied_from: dict | None = None
+
+
+# Payload fields MemoryStore writes from a MemoryRecord; any other payload key is "extra"
+# (e.g. copied_from) and is kept when the record is updated.
+RECORD_FIELDS = ("type", "name", "content", "source_repo", "agent", "tags", "created_at", "updated_at")
+
+
+def record_dict(r: MemoryRecord) -> dict:
+    """API view of a record: `copied_from` only when present."""
+    d = dataclasses.asdict(r)
+    if d.get("copied_from") is None:
+        d.pop("copied_from", None)
+    return d
 
 
 class MemoryStore:
@@ -145,20 +162,17 @@ class MemoryStore:
             return None
         return self._hit_to_record(results[0])
 
-    def upsert(self, record: MemoryRecord, *, collection: str = COLLECTION) -> MemoryRecord:
+    @staticmethod
+    def _payload(record: MemoryRecord, extra: dict | None = None) -> dict:
+        return {**(extra or {}), **{f: getattr(record, f) for f in RECORD_FIELDS}}
+
+    def upsert(self, record: MemoryRecord, *, collection: str = COLLECTION,
+               extra_payload: dict | None = None) -> MemoryRecord:
+        """Write `record` (re-embedded). The payload is the record's fields plus `extra_payload`."""
         vector = self._embed(f"{record.name} {record.content}")
         self._client.upsert(
             collection_name=collection,
-            points=[PointStruct(id=record.id, vector=vector, payload={
-                "type": record.type,
-                "name": record.name,
-                "content": record.content,
-                "source_repo": record.source_repo,
-                "agent": record.agent,
-                "tags": record.tags,
-                "created_at": record.created_at,
-                "updated_at": record.updated_at,
-            })],
+            points=[PointStruct(id=record.id, vector=vector, payload=self._payload(record, extra_payload))],
         )
         _upsert_counter.add(1)
         return record
@@ -246,15 +260,18 @@ class MemoryStore:
 
     def update(self, memory_id: str, content: str, tags: list[str], type: str | None = None,
                *, collection: str = COLLECTION) -> Optional[MemoryRecord]:
-        existing = self.get(memory_id, collection=collection)
-        if not existing:
+        """Change content/tags/type; every other payload field (e.g. copied_from) is kept."""
+        results = self._client.retrieve(collection_name=collection, ids=[memory_id], with_payload=True)
+        if not results:
             return None
+        existing = self._hit_to_record(results[0])
+        extra = {k: v for k, v in (results[0].payload or {}).items() if k not in RECORD_FIELDS}
         existing.content = content
         existing.tags = tags
         if type is not None:
             existing.type = type
         existing.updated_at = datetime.now(timezone.utc).isoformat()
-        return self.upsert(existing, collection=collection)
+        return self.upsert(existing, collection=collection, extra_payload=extra)
 
     def delete(self, memory_id: str, *, collection: str = COLLECTION) -> bool:
         existing = self.get(memory_id, collection=collection)
@@ -278,15 +295,9 @@ class MemoryStore:
     def put_point(self, record: MemoryRecord, vector: list[float], collection: str,
                   extra_payload: dict | None = None) -> None:
         """Upsert `record` with exactly `vector` (no re-embedding), merging `extra_payload`."""
-        payload = {
-            **(extra_payload or {}),
-            "type": record.type, "name": record.name, "content": record.content,
-            "source_repo": record.source_repo, "agent": record.agent, "tags": record.tags,
-            "created_at": record.created_at, "updated_at": record.updated_at,
-        }
         self._client.upsert(
             collection_name=collection,
-            points=[PointStruct(id=record.id, vector=vector, payload=payload)],
+            points=[PointStruct(id=record.id, vector=vector, payload=self._payload(record, extra_payload))],
         )
 
     @staticmethod
@@ -302,6 +313,7 @@ class MemoryStore:
             tags=p.get("tags", []),
             created_at=p["created_at"],
             updated_at=p["updated_at"],
+            copied_from=p.get("copied_from") if isinstance(p.get("copied_from"), dict) else None,
         )
 
     @staticmethod

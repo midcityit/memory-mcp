@@ -1,4 +1,3 @@
-import dataclasses
 import asyncio
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Depends, Request
@@ -13,7 +12,7 @@ from memory_mcp.admin.rest import build_admin_router
 from memory_mcp.admin.store import AdminStore
 from memory_mcp.admin.tenants import TenantService
 from memory_mcp.config import cfg_str, load_config, Config
-from memory_mcp.store import MemoryStore, MemoryRecord
+from memory_mcp.store import MemoryStore, MemoryRecord, record_dict
 from memory_mcp import mcp_tools
 from memory_mcp.telemetry import setup_telemetry
 
@@ -221,7 +220,7 @@ def create_app(*, admin_store: AdminStore | None = None, memory_store: MemorySto
 
 
 def _record_dict(r: MemoryRecord) -> dict:
-    d = dataclasses.asdict(r)
+    d = record_dict(r)
     if r.stale:
         d["stale_warning"] = "⚠️ This memory is stale — verify it's still current"
     return d

@@ -170,3 +170,30 @@ async def test_copy_refusal_does_not_reveal_whether_source_ids_exist(env):
     assert a.status_code == b.status_code == 403
     assert a.json() == b.json()
     assert _count(env, "beta") == 0
+
+
+async def test_copied_from_is_returned_and_survives_updates(env):
+    src = env.seed("alpha", "deploy notes", source_repo="org/app")
+    [created] = (await _copy(env, ui(G_ADMIN), ids=[src])).json()["created"]
+    dest = created["id"]
+    beta_admin = ui(G_BADMIN)
+
+    got = (await env.client.get(f"/memories/{dest}", params={"tenant": "beta"}, headers=beta_admin)).json()
+    assert got["copied_from"]["tenant"] == "alpha" and got["copied_from"]["id"] == src
+    prov = got["copied_from"]
+
+    resp = await env.client.patch(f"/memories/{dest}", params={"tenant": "beta"}, headers=beta_admin,
+                                  json={"content": "edited", "tags": ["x"]})
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["copied_from"] == prov and resp.json()["content"] == "edited"
+    # Saving by the same name updates in place and keeps it too.
+    resp = await env.client.post("/memories", params={"tenant": "beta"}, headers=beta_admin, json={
+        "type": "note", "name": "deploy notes", "content": "saved again", "source_repo": "org/app"})
+    assert resp.status_code == 201 and resp.json()["id"] == dest
+    assert _point(env, "beta", dest).payload["copied_from"] == prov
+    listed = (await env.client.get("/memories", params={"tenant": "beta"}, headers=beta_admin)).json()
+    assert [m["copied_from"] for m in listed["memories"]] == [prov]
+
+    # A memory that was never copied has no copied_from key at all.
+    plain = (await env.client.get(f"/memories/{src}", params={"tenant": "alpha"}, headers=ui(G_ADMIN))).json()
+    assert "copied_from" not in plain

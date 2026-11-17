@@ -10,7 +10,7 @@ API mode (server running with ADMIN_PG_DSN, BOOTSTRAP_TENANT_ID=alpha, KG_ENABLE
     python scripts/admin_smoke.py --base-url http://localhost:58000 \\
       [--qdrant-url http://localhost:56333] [--expect-restart]
 
-  --qdrant-url    also checks the stored `copied_from` payload (the API does not return it)
+  --qdrant-url    also checks the stored `copied_from` payload in Qdrant (the API returns it too)
   --expect-restart after the API checks, prints "WAITING FOR RESTART", waits until the
                   server goes down and comes back, then checks that state persisted.
 
@@ -414,6 +414,9 @@ class ApiSmoke:
                 f"{r.status_code} {res}")
         r = self.get(k["beta"], f"/memories/{self.copy_id}")
         c.check(r.status_code == 200 and r.json().get("name") == name, "beta key reads the copy", str(r.status_code))
+        cf = (r.json().get("copied_from") or {}) if r.status_code == 200 else {}
+        c.check(cf.get("tenant") == "alpha" and cf.get("id") == self.alpha_id,
+                "API returns copied_from on the copy", str(cf))
         r = self.get(k["alpha"], f"/memories/{self.alpha_id}")
         c.check(r.status_code == 200, "source memory still in alpha (copy, not move)")
         if self.qdrant_url:
@@ -423,7 +426,7 @@ class ApiSmoke:
             c.check(cf.get("tenant") == "alpha" and cf.get("id") == self.alpha_id and cf.get("at")
                     and cf.get("by") == "Smoke Admin (ä)", "copy carries copied_from {tenant,id,at,by}", str(cf))
         else:
-            c.note("copied_from not checked (no --qdrant-url; the API does not return it)")
+            c.note("stored copied_from payload not checked (no --qdrant-url)")
         r = self.admin("POST", "/admin/copy", json={**body, "dry_run": False})
         res = r.json() if r.status_code == 200 else {}
         c.check(not res.get("created") and [u["id"] for u in res.get("updated", [])] == [self.copy_id],
