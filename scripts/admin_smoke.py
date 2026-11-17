@@ -24,6 +24,7 @@ import asyncio
 import json
 import os
 import random
+import re
 import subprocess
 import sys
 import tempfile
@@ -37,6 +38,8 @@ import httpx
 
 REVOKE_WAIT_S = 31.0
 POLL_S = 2.0
+DETAIL_MAX = 200
+HEX64 = re.compile(r"^[0-9a-f]{64}$")
 
 
 class Checks:
@@ -56,8 +59,9 @@ class Checks:
             self.passed += 1
         else:
             self.failed += 1
-        line = f"{'PASS' if ok else 'FAIL'} {desc}" + (f" ({detail})" if detail and not ok else "")
-        print(self._mask(line), flush=True)
+        # Mask first, then truncate: a cut must never leave part of a secret unmasked.
+        detail = self._mask(detail)[:DETAIL_MAX] if detail and not ok else ""
+        print(f"{'PASS' if ok else 'FAIL'} {self._mask(desc)}" + (f" ({detail})" if detail else ""), flush=True)
         return ok
 
     def note(self, text: str) -> None:
@@ -76,14 +80,26 @@ def _ids(body: dict) -> set[str]:
     return {m["id"] for m in body.get("memories", [])}
 
 
+def root_cause(e: BaseException) -> BaseException:
+    """The first leaf of nested exception groups."""
+    while isinstance(e, BaseExceptionGroup) and e.exceptions:
+        e = e.exceptions[0]
+    return e
+
+
 # ── MCP client ────────────────────────────────────────────────────────────────
 @asynccontextmanager
-async def mcp_session(base_url: str, token: str):
+async def mcp_session(base_url: str, token: str, statuses: list[int] | None = None):
+    """A ready MCP session; `statuses` (if given) collects every HTTP status the server answered."""
     from mcp.client.session import ClientSession
     from mcp.client.streamable_http import streamable_http_client
     from mcp.shared._httpx_utils import create_mcp_http_client
 
     async with create_mcp_http_client(headers={"Authorization": f"Bearer {token}"}) as http:
+        if statuses is not None:
+            async def record(response) -> None:
+                statuses.append(response.status_code)
+            http.event_hooks["response"].append(record)
         async with streamable_http_client(f"{base_url}/mcp/", http_client=http) as (read, write):
             async with ClientSession(read, write) as session:
                 await session.initialize()
@@ -225,6 +241,10 @@ class ApiSmoke:
                     f"create {label} key ({spec['access']}, {','.join(spec['tenants'])})", str(r.status_code))
         r = self.admin("GET", "/admin/keys")
         listing = r.text
+        values = [v for x in (r.json().get("keys", []) if r.status_code == 200 else [])
+                  for v in x.values() if isinstance(v, str)]
+        c.check(r.status_code == 200 and len(values) > 0 and not any(HEX64.match(v) for v in values),
+                "GET /admin/keys has no 64-hex value (no hash)")
         c.check(r.status_code == 200 and all(k not in listing for k in self.keys.values())
                 and "secret_hash" not in listing, "GET /admin/keys never shows a key or hash")
         if len(self.keys) != len(specs):
@@ -302,20 +322,20 @@ class ApiSmoke:
                                content=content, source_repo="smoke", agent="impostor-agent")
                 rec = r.data if isinstance(r.data, dict) else {}
                 mids[label] = rec.get("id", "")
-                c.check(not r.is_error and mids[label], f"{label} key saves (MCP)", r.text[:120])
+                c.check(not r.is_error and mids[label], f"{label} key saves (MCP)", r.text)
                 c.check(rec.get("agent") == f"smoke-{label}", f"{label} MCP save stamped agent smoke-{label}",
                         str(rec.get("agent")))
                 r = await tool(s, "search_memories", query=content, limit=5)
                 found = {m["id"] for m in (r.data or [])} if isinstance(r.data, list) else set()
-                c.check(not r.is_error and mids[label] in found, f"{label} key search finds it (MCP)", r.text[:120])
+                c.check(not r.is_error and mids[label] in found, f"{label} key search finds it (MCP)", r.text)
                 r = await tool(s, "list_memories")
                 c.check(not r.is_error and mids[label] in _ids(r.data or {}), f"{label} key list includes it (MCP)")
                 r = await tool(s, "list_memories", tenant=other)
                 c.check(r.is_error and "No access to tenant" in r.text, f"{label} key refused tenant={other} (MCP)",
-                        r.text[:120])
+                        r.text)
                 r = await tool(s, "delete_memory", memory_id=getattr(self, f"{other}_id"))
                 c.check(not r.is_error and r.data == {"deleted": False},
-                        f"{label} key cannot see a {other} memory id (MCP delete finds nothing)", r.text[:120])
+                        f"{label} key cannot see a {other} memory id (MCP delete finds nothing)", r.text)
         self.alpha_mcp_id = mids["alpha"]
         for label in ("alpha", "beta"):
             r = self.get(k[label], f"/memories/{getattr(self, f'{label}_id')}")
@@ -327,13 +347,16 @@ class ApiSmoke:
             r = await tool(s, "list_memories", tenant="beta")
             c.check(not r.is_error and self.beta_id in _ids(r.data or {}), "reader lists beta (MCP)")
             r = await tool(s, "save_memory", type="reference", name="x", content="x", tenant="alpha")
-            c.check(r.is_error and "read-only" in r.text, "reader cannot save (MCP)", r.text[:120])
+            c.check(r.is_error and "This key is read-only; save_memory is not allowed" in r.text,
+                    "reader cannot save (MCP, key_read_only)", r.text)
             r = await tool(s, "list_memories")
-            c.check(r.is_error and "pass tenant" in r.text, "reader without tenant gets tenant_required (MCP)",
-                    r.text[:120])
+            c.check(r.is_error and "This key covers several tenants; pass tenant" in r.text,
+                    "reader without tenant gets tenant_required (MCP)",
+                    r.text)
         async with mcp_session(self.base, k["nodelete"]) as s:
             r = await tool(s, "delete_memory", memory_id=self.alpha_id)
-            c.check(r.is_error and "denied" in r.text, "denied-tools key cannot delete (MCP)", r.text[:120])
+            c.check(r.is_error and "delete_memory is denied for this caller" in r.text,
+                    "denied-tools key cannot delete (MCP, tool_denied)", r.text)
         r = self.get(k["alpha"], f"/memories/{self.alpha_id}")
         c.check(r.status_code == 200, "memory still exists after the refused MCP delete")
 
@@ -346,13 +369,13 @@ class ApiSmoke:
         async with mcp_session(self.base, k["alpha"]) as s:
             r = await tool(s, "kg_upsert_entity", graph="alpha", **args)
             self.kg_key = (r.data or {}).get("key", "") if isinstance(r.data, dict) else ""
-            c.check(not r.is_error and self.kg_key, "alpha key upserts an entity in graph alpha", r.text[:160])
+            c.check(not r.is_error and self.kg_key, "alpha key upserts an entity in graph alpha", r.text)
         async with mcp_session(self.base, k["beta"]) as s:
             r = await tool(s, "kg_upsert_entity", graph="beta", **args)
-            c.check(not r.is_error, "beta key upserts the same entity in graph beta", r.text[:160])
+            c.check(not r.is_error, "beta key upserts the same entity in graph beta", r.text)
             r = await tool(s, "kg_upsert_entity", graph="alpha", **args)
             c.check(r.is_error and "No access to tenant 'alpha'" in r.text, "beta key refused on graph alpha (MCP)",
-                    r.text[:160])
+                    r.text)
         r = self.get(k["beta"], f"/kg/alpha/entities/{self.kg_key}")
         c.check(r.status_code == 403, "beta key gets 403 on graph alpha (REST)", str(r.status_code))
         r = self.get(k["alpha"], f"/kg/alpha/entities/{self.kg_key}")
@@ -381,7 +404,8 @@ class ApiSmoke:
         c.check(len(res.get("created", [])) == 1 and not res.get("updated") and not res.get("missing"),
                 "dry run reports 1 created", f"{r.status_code} {res}")
         r = self.get(k["beta"], "/memories")
-        c.check(name not in {m["name"] for m in r.json().get("memories", [])}, "dry run wrote nothing to beta")
+        c.check(r.status_code == 200 and name not in {m["name"] for m in r.json().get("memories", [])},
+                "dry run wrote nothing to beta", str(r.status_code))
         r = self.admin("POST", "/admin/copy", json={**body, "dry_run": False})
         res = r.json() if r.status_code == 200 else {}
         created = res.get("created", [])
@@ -437,13 +461,19 @@ class ApiSmoke:
         c.check(r.status_code == 204, "revoke beta key is 204", str(r.status_code))
         ok, took = self.wait_status(lambda: self.get(k["beta"], "/memories"), 401)
         c.check(ok, f"revoked beta key gets 401 within {REVOKE_WAIT_S:.0f} s (took {took:.1f} s)")
+        # The MCP client turns a 401 into a generic JSON-RPC error without the status, so
+        # the HTTP statuses are recorded by a response hook and the 401 is asserted there.
+        from mcp.shared.exceptions import MCPError
+        statuses: list[int] = []
+        err: BaseException | None = None
         try:
-            async with mcp_session(self.base, k["beta"]) as s:
+            async with mcp_session(self.base, k["beta"], statuses) as s:
                 await tool(s, "list_memories")
-            refused = False
-        except Exception:  # noqa: BLE001 - the transport raises on the 401
-            refused = True
-        c.check(refused, "revoked beta key is refused over MCP")
+        except Exception as e:  # noqa: BLE001 - inspected below
+            err = root_cause(e)
+        c.check(isinstance(err, MCPError) and statuses[:1] == [401] and all(x == 401 for x in statuses),
+                "revoked beta key is refused over MCP with HTTP 401",
+                f"{type(err).__name__}: {err}; statuses={statuses}")
 
     # 10 audit
     def audit(self) -> None:
@@ -480,10 +510,21 @@ class ApiSmoke:
                 "copy_memory rows (one per write) are recorded under the destination tenant beta", str(len(copies)))
         c.check(not any(x["action"] == "copy_memory" for x in alpha),
                 "copy_memory rows are not under the source tenant alpha (recorded under beta)")
-        everything = json.dumps(rows())
+        every_row = rows()
+        ids = {x["id"] for x in every_row}
+        c.check(len(every_row) >= len(alpha) + len(beta) and {x["id"] for x in alpha + beta} <= ids,
+                "the all-tenant audit query covers every alpha and beta row",
+                f"{len(every_row)} vs {len(alpha)}+{len(beta)}")
+        c.check(any(x["action"] == "copy_memory" and x["target"] == self.copy_id for x in every_row)
+                and any(x["action"] == "admin_create_key" and x["target"] == self.key_ids["alpha"] for x in every_row)
+                and any(x["action"] == "admin_create_tenant" and x["target"] == "beta" for x in every_row),
+                "the all-tenant audit query contains the known marker rows (copy, key creation, tenant creation)")
+        everything = json.dumps(every_row)
         c.check(not any(s in everything for s in c.secrets if s), "no audit row contains a token or generated key")
-        secrets_parts = [s.rsplit("_", 1)[-1] for s in self.keys.values()]
-        c.check(not any(p in everything for p in secrets_parts), "no audit row contains a key secret part")
+        parts = [key.split("_", 2)[2] for key in self.keys.values()]  # mt_<id>_<secret>; the secret may hold "_"
+        c.check(len(parts) == len(self.keys) and all(len(x) >= 32 for x in parts),
+                "every generated key has a secret part of at least 32 characters")
+        c.check(not any(x in everything for x in parts), "no audit row contains a key secret part")
         c.check(not any(t in everything for t in self.contents), "no audit row contains saved memory content")
 
     # 11 retire legacy
@@ -649,6 +690,8 @@ def split_smoke(qdrant_url: str) -> int:
     print(p.stdout.rstrip())
     c.check(p.returncode == 0 and q.count(f"{SPLIT_PREFIX}beta", exact=True).count == 3
             and q.count(SPLIT_SRC, exact=True).count == 3, "re-running apply is a no-op")
+    snaps_after = [x.name for x in q.list_snapshots(SPLIT_SRC)]
+    c.check(snaps_after == snaps, "re-running apply took no new snapshot", str(snaps_after))
     for name in (SPLIT_SRC, f"{SPLIT_PREFIX}beta"):
         q.delete_collection(name)
     print(f"==== {c.passed} passed, {c.failed} failed", flush=True)
@@ -679,9 +722,8 @@ def main(argv: list[str] | None = None) -> int:
     except SystemExit:
         raise
     except Exception as e:  # noqa: BLE001 - report, never dump request headers
-        while isinstance(e, BaseExceptionGroup) and e.exceptions:
-            e = e.exceptions[0]
-        smoke.c.check(False, f"smoke run aborted: {type(e).__name__}", str(e)[:300])
+        e = root_cause(e)
+        smoke.c.check(False, f"smoke run aborted: {type(e).__name__}", str(e))
         return smoke.summary()
 
 
