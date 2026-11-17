@@ -176,11 +176,54 @@ Key details:
 | Env Var | Required | Default | Description |
 |---------|----------|---------|-------------|
 | `QDRANT_URL` | ✅ | — | Qdrant HTTP URL, e.g. `http://qdrant:6333` |
-| `API_TOKEN` | ✅ | — | Bearer token for all authenticated endpoints |
+| `API_TOKEN` | ✅ unless `UI_TOKEN` is set | — | Legacy shared bearer token. Optional once `UI_TOKEN` is set and the legacy token is retired (see below). Must differ from `UI_TOKEN` |
 | `STALE_DAYS` | ❌ | `30` | Days before memories get stale warning |
 | `DEFAULT_LIST_LIMIT` | ❌ | `1000` | Default max records returned by list endpoint |
 | `MCP_ALLOWED_HOSTS` | ❌ | `localhost` | Comma-separated allowed hosts for MCP transport |
 | `OTLP_ENDPOINT` | ❌ | `http://otel-collector.monitoring.svc.cluster.local:4317` | OTLP gRPC endpoint; empty string disables |
+| `ADMIN_PG_DSN` | ❌ | — | Postgres DSN for the admin database. Setting it turns on multi-tenant mode. Opt-in only: it never falls back to `KG_PG_DSN`, so an instance that already has `KG_PG_DSN` stays in legacy mode until this is set |
+| `UI_TOKEN` | ❌ | — | Bearer token used by memory-ui. Must differ from `API_TOKEN` |
+| `ADMIN_GROUP_IDS` | ❌ | — | Comma-separated group ids whose members may use the admin API |
+| `BOOTSTRAP_TENANT_ID` | ❌ | — | Required on the first start in multi-tenant mode (while no tenants exist): the first tenant, which adopts the existing `memories` collection |
+| `BOOTSTRAP_TENANT_NAME` | ❌ | id | Display name for the bootstrap tenant |
+
+---
+
+## Tenants and keys
+
+Without `ADMIN_PG_DSN` the server runs in legacy mode: one shared token (`API_TOKEN`), one collection, and the admin endpoints return 501. Setting `ADMIN_PG_DSN` turns on multi-tenant mode.
+
+- **Tenant.** A separate set of memories with its own Qdrant collection. The id matches `^[a-z][a-z0-9_]{1,31}$`; the collection is `memories_<id>`. The first tenant (`BOOTSTRAP_TENANT_ID`) adopts the existing `memories` collection, so current data stays where it is. It is also the default tenant for the legacy token and the UI. Tenants can be disabled (calls are rejected, data stays); they cannot be deleted.
+- **Key format.** `mt_<id>_<secret>`. The full key is shown once, when it is created or rotated, and cannot be read back. Store it straight away (for example as `<cctech-keyvault:SECRET-NAME>`).
+- **Scope.** Each key names the tenants it may use, read or write access, optionally tools it may not call, optionally `source_repo` patterns it may touch, and an optional expiry. Rotating a key makes a new one with the same scope; the old one keeps working for 24 hours so an agent can be switched without downtime. Revoking takes effect within about 30 seconds.
+- **Agent stamping.** Memories written with a scoped key are stamped with the key's agent name, not whatever the caller claims.
+- **Legacy token.** `API_TOKEN` keeps working and acts on the default tenant. Once the Keys screen shows it unused, retire it by removing `API_TOKEN` (and keep `UI_TOKEN`).
+- **`/docs`.** The API docs page now needs a token like every other route.
+
+## Splitting an existing collection
+
+If one collection holds memories for several tenants, `scripts/split_memories.py` moves the other tenants' memories into their own collections. Run it once per instance. It keeps each memory's id, payload and vector, so links that refer to memory ids stay valid. Nothing is built in: you give it the rules.
+
+```bash
+# 1. Dry run (default): reads only, writes a CSV to review
+python scripts/split_memories.py --qdrant-url "$QDRANT_URL" \
+  --rule 'source_repo=org-b/*:beta' --rule 'tag=beta:beta' \
+  --default alpha --out plan.csv
+
+# 2. Review plan.csv. Fix single memories in overrides.csv (columns: id,tenant)
+
+# 3. Apply
+python scripts/split_memories.py --qdrant-url "$QDRANT_URL" \
+  --rule 'source_repo=org-b/*:beta' --rule 'tag=beta:beta' \
+  --default alpha --overrides overrides.csv --apply
+```
+
+- Rules are checked in the order given and the first match wins. `source_repo=` takes a case-sensitive glob; `tag=` matches one tag exactly. Overrides beat rules. Anything unmatched stays with `--default`, which must be the bootstrap tenant. Its points never move.
+- `--apply` re-reads live data (it does not use the CSV), takes a Qdrant snapshot of the source collection and prints its name, copies the points, checks that every one arrived, and only then deletes them from the source. If the snapshot or the check fails, nothing is deleted and the exit code is non-zero.
+- The snapshot is the rollback. Restore it as in "Qdrant Backup & Restore" below.
+- Safe to rerun: points already in the target are skipped.
+- Order of work: start in multi-tenant mode first, then in one short window run the split and switch the agents of the other tenant to their scoped keys. Until switched, those agents still use the legacy token, which reads the default tenant and will not find the moved memories.
+- Use `--source` and `--collection-prefix` if your collection names differ from the defaults (`memories`, `memories_`).
 
 ---
 
