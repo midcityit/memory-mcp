@@ -463,3 +463,49 @@ async def test_503_comes_back_as_json_through_middleware(clock):
         r = await c.get("/who", headers=bearer(API))
     assert r.status_code == 503
     assert r.json() == {"detail": "Admin store unavailable"}
+
+
+# ── non-HTTP scopes ─────────────────────────────────────────────────────────
+
+async def _drive(scope, store, clock):
+    called, sent = [], []
+
+    async def inner(scope, receive, send):
+        called.append(scope["type"])
+
+    async def receive():
+        return {"type": f"{scope['type']}.connect"}
+
+    async def send(message):
+        sent.append(message)
+    mw = PrincipalMiddleware(inner, authenticator=Authenticator(cfg(), store, clock=clock))
+    await mw(scope, receive, send)
+    return called, sent
+
+
+async def test_websocket_scope_is_closed_with_1008(store, clock):
+    scope = {"type": "websocket", "path": "/mcp/", "headers": [(b"authorization", f"Bearer {API}".encode())]}
+    called, sent = await _drive(scope, store, clock)
+    assert called == [] and sent == [{"type": "websocket.close", "code": 1008}]
+
+
+async def test_lifespan_scope_passes_through(store, clock):
+    called, sent = await _drive({"type": "lifespan"}, store, clock)
+    assert called == ["lifespan"] and sent == []
+
+
+def test_websocket_route_is_refused_end_to_end(store, clock):
+    from starlette.testclient import TestClient
+    from starlette.websockets import WebSocket, WebSocketDisconnect
+
+    app = FastAPI()
+
+    @app.websocket("/ws")
+    async def ws(websocket: WebSocket):
+        await websocket.accept()
+        await websocket.send_text("hello")
+    app.add_middleware(PrincipalMiddleware, authenticator=Authenticator(cfg(), store, clock=clock))
+    with pytest.raises(WebSocketDisconnect) as ei:
+        with TestClient(app).websocket_connect("/ws", headers=bearer(API)) as conn:
+            conn.receive_text()
+    assert ei.value.code == 1008

@@ -308,14 +308,20 @@ class Authenticator:
 
 
 class PrincipalMiddleware:
-    """Pure ASGI middleware: resolve the caller on every HTTP path except /health."""
+    """Pure ASGI middleware: resolve the caller on every HTTP path except /health.
+
+    Websocket connections are closed with 1008 (policy violation); lifespan passes through."""
 
     def __init__(self, app, authenticator: Authenticator):
         self.app = app
         self.authenticator = authenticator
 
     async def __call__(self, scope, receive, send):
-        if scope["type"] != "http" or scope.get("path") == "/health":
+        if scope["type"] == "websocket":
+            # No route serves websockets and none is authenticated here: refuse rather than pass through.
+            await send({"type": "websocket.close", "code": 1008})
+            return
+        if scope["type"] != "http" or scope.get("path") == "/health":  # lifespan passes through
             await self.app(scope, receive, send)
             return
         path = scope.get("path")
