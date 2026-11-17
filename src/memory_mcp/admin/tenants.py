@@ -12,6 +12,7 @@ from memory_mcp.kg.store import EntityFilter
 from memory_mcp.store import COLLECTION, MemoryStore
 
 _STATUSES = ("active", "disabled")
+_MISS_RELOAD_SECONDS = 2.0
 
 
 class TenantService:
@@ -25,6 +26,7 @@ class TenantService:
         self._lock = threading.Lock()
         self._snapshot: dict[str, Tenant] = {}
         self._loaded_at: float | None = None
+        self._miss_reload_at: float | None = None
 
     # cache
     def _refresh(self) -> None:
@@ -45,12 +47,18 @@ class TenantService:
         return sorted(self._snapshot.values(), key=lambda t: t.id)
 
     def get(self, id: str) -> Tenant | None:
+        refreshed = False
         if not self._fresh():
             self._refresh()
+            refreshed = True
         t = self._snapshot.get(id)
-        if t is None:
-            self._refresh()
-            t = self._snapshot.get(id)
+        if t is None and not refreshed:
+            # Negative cache: reload on a miss at most once per _MISS_RELOAD_SECONDS.
+            now = self._clock()
+            if self._miss_reload_at is None or now - self._miss_reload_at >= _MISS_RELOAD_SECONDS:
+                self._miss_reload_at = now
+                self._refresh()
+                t = self._snapshot.get(id)
         return t
 
     def collection_for(self, id: str) -> str:
@@ -63,27 +71,25 @@ class TenantService:
 
     # lifecycle
     def bootstrap(self, tenant_id: str | None, name: str | None, existing_graphs: list[str]) -> None:
-        if self._store.list_tenants():
+        """Adopt existing data as tenants. Finished only once `default_tenant` is set (written last),
+        so a partial failure is retried, skipping rows already inserted."""
+        if self._store.get_settings().get("default_tenant"):
             return
         if not tenant_id:
             raise RuntimeError("BOOTSTRAP_TENANT_ID required")
-        self._store.insert_tenant(
-            Tenant(id=tenant_id, name=name or tenant_id, description="", collection=COLLECTION,
-                   status="active"),
-            by="bootstrap")
-        self._store.put_settings({"default_tenant": tenant_id}, by="bootstrap")
-        if self._kg is not None:
-            self._kg.ensure_graph(tenant_id)
-        for gid in existing_graphs:
-            if gid == tenant_id:
-                continue
-            collection = f"memories_{gid}"
-            self._store.insert_tenant(
-                Tenant(id=gid, name=gid, description="", collection=collection, status="active"),
-                by="bootstrap")
+        if not GRAPH_ID_RE.match(tenant_id):
+            raise ValueError(f"invalid tenant id {tenant_id!r}")
+        wanted = [(tenant_id, name or tenant_id, COLLECTION)]
+        wanted += [(g, g, f"memories_{g}") for g in existing_graphs if g != tenant_id]
+        for tid, tname, collection in wanted:
             self._memory.ensure_collection(collection)
             if self._kg is not None:
-                self._kg.ensure_graph(gid)
+                self._kg.ensure_graph(tid)
+            if self._store.get_tenant(tid) is None:
+                self._store.insert_tenant(
+                    Tenant(id=tid, name=tname, description="", collection=collection, status="active"),
+                    by="bootstrap")
+        self._store.put_settings({"default_tenant": tenant_id}, by="bootstrap")
         self._invalidate()
 
     def create(self, id: str, name: str, description: str, by: str) -> Tenant:

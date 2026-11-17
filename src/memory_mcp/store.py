@@ -268,10 +268,10 @@ class MemoryStore:
                   extra_payload: dict | None = None) -> None:
         """Upsert `record` with exactly `vector` (no re-embedding), merging `extra_payload`."""
         payload = {
+            **(extra_payload or {}),
             "type": record.type, "name": record.name, "content": record.content,
             "source_repo": record.source_repo, "agent": record.agent, "tags": record.tags,
             "created_at": record.created_at, "updated_at": record.updated_at,
-            **(extra_payload or {}),
         }
         self._client.upsert(
             collection_name=collection,

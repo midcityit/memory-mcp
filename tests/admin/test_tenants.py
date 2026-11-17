@@ -81,6 +81,15 @@ def test_collection_isolation(mstore):
     assert mstore.count("memories_alpha") == 1 and mstore.count("memories_beta") == 0
 
 
+def test_put_point_extra_payload_cannot_override_core(mstore):
+    r = mstore.upsert(make_record("core"))
+    record, vec = mstore.get_point(r.id, "memories")
+    mstore.put_point(record, vec, "memories", extra_payload={"name": "evil", "content": "x", "origin": "o"})
+    got = mstore.get_point(r.id, "memories")[0]
+    assert got.name == "core" and got.content == "core body"
+    assert mstore.client.retrieve("memories", [r.id], with_payload=True)[0].payload["origin"] == "o"
+
+
 def test_default_collection_unchanged(mstore):
     r = mstore.upsert(make_record("legacy"))
     assert mstore.get(r.id).name == "legacy"
@@ -121,11 +130,66 @@ def test_bootstrap_requires_id(svc):
         svc.bootstrap(None, None, [])
 
 
-def test_bootstrap_noop_when_tenants_exist(svc, admin):
-    admin.insert_tenant(Tenant("alpha", "A", "", "memories", "active"), by="t")
+def test_bootstrap_noop_when_completed(svc, admin):
+    svc.bootstrap("alpha", None, [])
     svc.bootstrap(None, None, ["beta"])
     assert [t.id for t in admin.list_tenants()] == ["alpha"]
+    assert admin.get_settings()["default_tenant"] == "alpha"
+
+
+def test_bootstrap_rejects_bad_id(svc, admin):
+    with pytest.raises(ValueError):
+        svc.bootstrap("Bad Id", None, [])
+    assert admin.list_tenants() == []
+
+
+def test_bootstrap_recovers_after_partial_failure(admin, mstore, kg, clock):
+    real = mstore.ensure_collection
+
+    def flaky(c):
+        if c == "memories_gamma":
+            raise RuntimeError("qdrant down")
+        real(c)
+    mstore.ensure_collection = flaky
+    svc = TenantService(admin, mstore, kg, clock=clock)
+    with pytest.raises(RuntimeError):
+        svc.bootstrap("alpha", None, ["alpha", "beta", "gamma"])
     assert "default_tenant" not in admin.get_settings()
+    assert "gamma" not in {t.id for t in admin.list_tenants()}
+    mstore.ensure_collection = real
+    svc.bootstrap("alpha", None, ["alpha", "beta", "gamma"])
+    ids = [t.id for t in admin.list_tenants()]
+    assert ids == ["alpha", "beta", "gamma"]
+    assert admin.get_settings()["default_tenant"] == "alpha"
+
+
+def test_get_miss_reload_rate_limited(admin, mstore, clock):
+    calls = []
+    orig = admin.list_tenants
+    admin.list_tenants = lambda: (calls.append(1), orig())[1]
+    svc = TenantService(admin, mstore, clock=clock)
+    svc.get("alpha")
+    calls.clear()
+    clock.t = 1.0
+    admin.insert_tenant(Tenant("alpha", "A", "", "memories_alpha", "active"), by="t")
+    for _ in range(100):
+        assert svc.get("nope") is None
+    assert len(calls) == 1
+    clock.t = 3.5
+    admin.insert_tenant(Tenant("beta", "B", "", "memories_beta", "active"), by="t")
+    assert svc.get("beta") is not None
+
+
+def test_get_stale_miss_refreshes_once(admin, mstore, clock):
+    calls = []
+    orig = admin.list_tenants
+    admin.list_tenants = lambda: (calls.append(1), orig())[1]
+    svc = TenantService(admin, mstore, clock=clock)
+    svc.all()
+    calls.clear()
+    clock.t = 100.0
+    assert svc.get("nope") is None
+    assert len(calls) == 1
 
 
 def test_create_and_validation(svc, admin, kg, mstore):
