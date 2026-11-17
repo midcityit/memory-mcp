@@ -33,8 +33,45 @@ def test_load_config_missing_qdrant_url_raises(monkeypatch):
 def test_load_config_missing_api_token_raises(monkeypatch):
     monkeypatch.setenv("QDRANT_URL", "http://localhost:6333")
     monkeypatch.delenv("API_TOKEN", raising=False)
-    with pytest.raises(KeyError):
+    monkeypatch.delenv("UI_TOKEN", raising=False)
+    with pytest.raises(ValueError, match="API_TOKEN or UI_TOKEN required"):
         load_config()
+
+
+def test_ui_token_alone_makes_api_token_optional(monkeypatch):
+    monkeypatch.setenv("QDRANT_URL", "http://localhost:6333")
+    monkeypatch.delenv("API_TOKEN", raising=False)
+    monkeypatch.setenv("UI_TOKEN", "ui")
+    cfg = load_config()
+    assert cfg.api_token is None
+    assert cfg.ui_token == "ui"
+
+
+def test_admin_dsn_falls_back_to_kg_pg_dsn(monkeypatch):
+    monkeypatch.setenv("QDRANT_URL", "http://q:6333")
+    monkeypatch.setenv("API_TOKEN", "t")
+    monkeypatch.delenv("ADMIN_PG_DSN", raising=False)
+    monkeypatch.setenv("KG_PG_DSN", "postgresql://kg")
+    assert load_config().admin_pg_dsn == "postgresql://kg"
+    monkeypatch.setenv("ADMIN_PG_DSN", "postgresql://admin")
+    assert load_config().admin_pg_dsn == "postgresql://admin"
+
+
+def test_admin_settings_defaults_and_group_ids(monkeypatch):
+    monkeypatch.setenv("QDRANT_URL", "http://q:6333")
+    monkeypatch.setenv("API_TOKEN", "t")
+    for v in ("ADMIN_PG_DSN", "KG_PG_DSN", "UI_TOKEN", "ADMIN_GROUP_IDS",
+              "BOOTSTRAP_TENANT_ID", "BOOTSTRAP_TENANT_NAME"):
+        monkeypatch.delenv(v, raising=False)
+    c = load_config()
+    assert (c.admin_pg_dsn, c.ui_token, c.admin_group_ids) == (None, None, ())
+    assert (c.bootstrap_tenant_id, c.bootstrap_tenant_name) == (None, None)
+    monkeypatch.setenv("ADMIN_GROUP_IDS", " g1, g2 ,,g3")
+    monkeypatch.setenv("BOOTSTRAP_TENANT_ID", "t1")
+    monkeypatch.setenv("BOOTSTRAP_TENANT_NAME", "Tenant One")
+    c = load_config()
+    assert c.admin_group_ids == ("g1", "g2", "g3")
+    assert (c.bootstrap_tenant_id, c.bootstrap_tenant_name) == ("t1", "Tenant One")
 
 
 def test_kg_settings_default_off(monkeypatch):
