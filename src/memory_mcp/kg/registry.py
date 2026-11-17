@@ -6,6 +6,7 @@ import json
 import re
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Callable
 
 import yaml
 
@@ -45,10 +46,23 @@ class TypeDef:
 class Registry:
     def __init__(self, graphs: dict[str, dict], relations: dict[str, RelationDef],
                  types: dict[str, dict[str, TypeDef]]):
-        self.graphs = graphs
+        self._graphs = graphs
+        self._graph_source: Callable[[], dict[str, dict]] | None = None
         self.relations = relations
         self.types = types  # provider -> {native type -> TypeDef}
         self._build_type_index()
+
+    @property
+    def graphs(self) -> dict[str, dict]:
+        return self._graph_source() if self._graph_source is not None else self._graphs
+
+    @graphs.setter
+    def graphs(self, value: dict[str, dict]) -> None:
+        self._graphs = value
+
+    def set_graph_source(self, fn: Callable[[], dict[str, dict]]) -> None:
+        """Serve `graphs` from `fn()` (graph id -> {"name", "description"}) on every access."""
+        self._graph_source = fn
 
     @classmethod
     def load(cls, config_dir: Path | None = None, catalog_dir: Path | None = None) -> "Registry":
