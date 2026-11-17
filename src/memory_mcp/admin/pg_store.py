@@ -1,6 +1,8 @@
 """Postgres implementation of AdminStore (schema mt_admin)."""
 from __future__ import annotations
 
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from importlib import resources
 from typing import Any
@@ -8,7 +10,8 @@ from typing import Any
 from memory_mcp.admin.models import ApiKey, RoleMapping, Tenant
 from memory_mcp.admin.store import decode_cursor, encode_cursor
 
-_LOCK_ID = 7300073
+_LOCK_ID = 7300073  # schema creation
+_BOOTSTRAP_LOCK_ID = 7300074  # tenant bootstrap
 _TABLES = ("tenant", "api_key", "role_mapping", "setting", "audit_log")
 _KEY_COLS = ("id, agent, secret_hash, tenants, access, denied_tools, source_repo_patterns, "
              "expires_at, created_at, created_by, revoked_at, last_used_at, rotated_from")
@@ -65,6 +68,20 @@ class PgAdminStore:
             raise RuntimeError(
                 "cannot create schema mt_admin: grant CREATE on the database to this role "
                 "or apply admin/schema.sql manually") from e
+
+    @contextmanager
+    def bootstrap_lock(self) -> Iterator[None]:
+        """Session advisory lock held for the whole bootstrap: a second worker waits here and
+        then finds bootstrap done. Released on exit, or by Postgres if the connection dies."""
+        with self.pool.connection() as conn:
+            conn.execute("SELECT pg_advisory_lock(%s)", (_BOOTSTRAP_LOCK_ID,))
+            conn.commit()  # session lock: do not sit idle in a transaction while bootstrapping
+            try:
+                yield
+            finally:
+                conn.rollback()
+                conn.execute("SELECT pg_advisory_unlock(%s)", (_BOOTSTRAP_LOCK_ID,))
+                conn.commit()
 
     @staticmethod
     def _schema_present(conn) -> bool:

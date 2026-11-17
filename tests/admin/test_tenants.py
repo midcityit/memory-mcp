@@ -1,7 +1,13 @@
+import os
+import threading
+import time
+from contextlib import contextmanager
 from datetime import datetime, timezone
+from types import SimpleNamespace
 
 import pytest
 from qdrant_client import QdrantClient
+from qdrant_client.models import Distance, VectorParams
 
 from memory_mcp.admin.models import ApiKey, AuthzError, Tenant
 from memory_mcp.admin.store import InMemoryAdminStore
@@ -279,3 +285,107 @@ def test_registry_graph_source():
     reg.set_graph_source(lambda: {"alpha": {"name": "A", "description": ""}})
     assert list(reg.graphs) == ["alpha"]
     reg.require_graph("alpha")
+
+
+# ── concurrent bootstrap (two uvicorn workers) ────────────────────────────────────
+def test_bootstrap_tolerates_work_done_by_another_worker(admin, mstore, kg, clock):
+    """Between our check and our write, another worker creates the collection and inserts the row."""
+    real_list = mstore.client.get_collections
+    mstore.client.create_collection("memories_beta", vectors_config=VectorParams(size=4, distance=Distance.COSINE))
+    stale = SimpleNamespace(collections=[c for c in real_list().collections if c.name != "memories_beta"])
+    mstore.client.get_collections = lambda: stale  # our check misses the collection; create gets "exists"
+
+    real_get = admin.get_tenant
+    raced = []
+
+    def get_tenant(tid):
+        if tid == "beta" and not raced:  # first look: absent; then the other worker inserts it
+            raced.append(tid)
+            admin.insert_tenant(Tenant("beta", "beta", "", "memories_beta", "active"), by="other-worker")
+            return None
+        return real_get(tid)
+    admin.get_tenant = get_tenant
+
+    svc = TenantService(admin, mstore, kg, clock=clock)
+    svc.bootstrap("alpha", None, ["beta"])  # no 409 / "exists" escapes
+    assert raced == ["beta"]
+    assert [t.id for t in admin.list_tenants()] == ["alpha", "beta"]
+    assert admin.get_settings()["default_tenant"] == "alpha"
+
+
+def test_bootstrap_insert_error_still_raises_when_row_absent(admin, mstore, kg, clock):
+    admin.insert_tenant = lambda t, by: (_ for _ in ()).throw(ValueError("boom"))
+    svc = TenantService(admin, mstore, kg, clock=clock)
+    with pytest.raises(ValueError, match="boom"):
+        svc.bootstrap("alpha", None, [])
+    assert "default_tenant" not in admin.get_settings()
+
+
+def test_bootstrap_rechecks_after_taking_the_lock(admin, mstore, kg, clock):
+    """A worker that waited on the lock finds bootstrap finished and does nothing."""
+    @contextmanager
+    def lock():
+        admin.put_settings({"default_tenant": "alpha"}, by="other-worker")  # finished while we waited
+        yield
+    admin.bootstrap_lock = lock
+    created = []
+    mstore.ensure_collection = created.append
+    TenantService(admin, mstore, kg, clock=clock).bootstrap("alpha", None, ["beta"])
+    assert created == [] and kg.graphs == [] and admin.list_tenants() == []
+
+
+class _SlowMemory:
+    """Check-then-create with a pause in between, counting real creates."""
+
+    def __init__(self):
+        self.lock = threading.Lock()
+        self.existing: set[str] = set()
+        self.creates: list[str] = []
+
+    def ensure_collection(self, c):
+        with self.lock:
+            present = c in self.existing
+        time.sleep(0.05)
+        if not present:
+            with self.lock:
+                if c in self.existing:
+                    raise RuntimeError(f"409 collection {c} already exists")
+                self.existing.add(c)
+                self.creates.append(c)
+
+
+@pytest.mark.skipif(not os.environ.get("TEST_ADMIN_PG_DSN"), reason="TEST_ADMIN_PG_DSN not set")
+def test_pg_bootstrap_lock_serializes_two_workers():
+    from memory_mcp.admin.pg_store import PgAdminStore
+
+    dsn = os.environ["TEST_ADMIN_PG_DSN"]
+    stores = [PgAdminStore(dsn), PgAdminStore(dsn)]
+    with stores[0].pool.connection() as conn:
+        conn.execute("DROP SCHEMA IF EXISTS mt_admin CASCADE")
+    stores[0].ensure_schema()
+    memory = _SlowMemory()
+    errors: list[BaseException] = []
+    barrier = threading.Barrier(2)
+
+    def worker(store):
+        try:
+            barrier.wait()
+            TenantService(store, memory).bootstrap("alpha", "Alpha", ["beta"])
+        except BaseException as e:  # noqa: BLE001 - reported below
+            errors.append(e)
+    try:
+        threads = [threading.Thread(target=worker, args=(s,)) for s in stores]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(30)
+        assert errors == []
+        # Serialized: the collections were created once, by whichever worker took the lock first.
+        assert sorted(memory.creates) == ["memories", "memories_beta"]
+        assert [t.id for t in stores[1].list_tenants()] == ["alpha", "beta"]
+        assert stores[1].get_settings()["default_tenant"] == "alpha"
+    finally:
+        with stores[0].pool.connection() as conn:
+            conn.execute("DROP SCHEMA IF EXISTS mt_admin CASCADE")
+        for s in stores:
+            s.close()

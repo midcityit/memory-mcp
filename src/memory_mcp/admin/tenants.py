@@ -72,24 +72,37 @@ class TenantService:
     # lifecycle
     def bootstrap(self, tenant_id: str | None, name: str | None, existing_graphs: list[str]) -> None:
         """Adopt existing data as tenants. Finished only once `default_tenant` is set (written last),
-        so a partial failure is retried, skipping rows already inserted."""
+        so a partial failure is retried, skipping rows already inserted.
+
+        Several workers may start at once: the store's bootstrap lock lets one run it while the
+        others wait and then find it finished. Each step also tolerates work another process
+        already did (an existing collection or tenant row), in case the lock is not shared."""
         if self._store.get_settings().get("default_tenant"):
             return
         if not tenant_id:
             raise RuntimeError("BOOTSTRAP_TENANT_ID required")
         if not GRAPH_ID_RE.match(tenant_id):
             raise ValueError(f"invalid tenant id {tenant_id!r}")
-        wanted = [(tenant_id, name or tenant_id, COLLECTION)]
-        wanted += [(g, g, f"memories_{g}") for g in existing_graphs if g != tenant_id]
-        for tid, tname, collection in wanted:
-            self._memory.ensure_collection(collection)
-            if self._kg is not None:
-                self._kg.ensure_graph(tid)
-            if self._store.get_tenant(tid) is None:
-                self._store.insert_tenant(
-                    Tenant(id=tid, name=tname, description="", collection=collection, status="active"),
-                    by="bootstrap")
-        self._store.put_settings({"default_tenant": tenant_id}, by="bootstrap")
+        with self._store.bootstrap_lock():
+            if self._store.get_settings().get("default_tenant"):  # another worker finished it
+                self._invalidate()
+                return
+            wanted = [(tenant_id, name or tenant_id, COLLECTION)]
+            wanted += [(g, g, f"memories_{g}") for g in existing_graphs if g != tenant_id]
+            for tid, tname, collection in wanted:
+                self._memory.ensure_collection(collection)
+                if self._kg is not None:
+                    self._kg.ensure_graph(tid)
+                if self._store.get_tenant(tid) is None:
+                    try:
+                        self._store.insert_tenant(
+                            Tenant(id=tid, name=tname, description="", collection=collection,
+                                   status="active"),
+                            by="bootstrap")
+                    except ValueError:
+                        if self._store.get_tenant(tid) is None:  # not a concurrent insert
+                            raise
+            self._store.put_settings({"default_tenant": tenant_id}, by="bootstrap")
         self._invalidate()
 
     def create(self, id: str, name: str, description: str, by: str) -> Tenant:

@@ -64,10 +64,16 @@ class MemoryStore:
         """Create `collection` (vectors plus the name/source_repo payload indexes) if missing."""
         existing = [c.name for c in self._client.get_collections().collections]
         if collection not in existing:
-            self._client.create_collection(
-                collection_name=collection,
-                vectors_config=VectorParams(size=VECTOR_DIM, distance=Distance.COSINE),
-            )
+            try:
+                self._client.create_collection(
+                    collection_name=collection,
+                    vectors_config=VectorParams(size=VECTOR_DIM, distance=Distance.COSINE),
+                )
+            except Exception:
+                # Another process (e.g. a second uvicorn worker) may have created it between
+                # the check and the create (Qdrant answers 409); that counts as success.
+                if not self._client.collection_exists(collection):
+                    raise
         # Ensure payload indexes exist for efficient filtering.
         # create_payload_index is idempotent — safe to call on every startup.
         self._client.create_payload_index(

@@ -5,6 +5,7 @@ import base64
 import dataclasses
 import json
 import threading
+from contextlib import AbstractContextManager, nullcontext
 from datetime import datetime, timezone
 from typing import Any, Protocol
 
@@ -14,6 +15,9 @@ from memory_mcp.admin.models import ApiKey, RoleMapping, Tenant
 class AdminStore(Protocol):
     def ensure_schema(self) -> None: ...
     def ping(self) -> None: ...
+    def bootstrap_lock(self) -> AbstractContextManager[None]:
+        """Held while bootstrapping tenants, so only one process (worker) bootstraps at a time."""
+        ...
     def list_tenants(self) -> list[Tenant]: ...
     def get_tenant(self, id: str) -> Tenant | None: ...
     def insert_tenant(self, t: Tenant, by: str) -> None: ...
@@ -66,6 +70,10 @@ class InMemoryAdminStore:
 
     def ping(self) -> None:
         pass
+
+    def bootstrap_lock(self) -> AbstractContextManager[None]:
+        # One process only: nothing to serialize against.
+        return nullcontext()
 
     # tenants
     def list_tenants(self) -> list[Tenant]:
