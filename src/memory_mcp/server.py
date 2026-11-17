@@ -227,9 +227,17 @@ def _record_dict(r: MemoryRecord) -> dict:
     return d
 
 
-# Only instantiate at module level when running for real (env vars present).
-# Tests call create_app() directly with mocks, so this is skipped when
-# QDRANT_URL is not set.
-import os as _os
-if _os.environ.get("QDRANT_URL"):
-    app = create_app()
+# `uvicorn memory_mcp.server:create_app --factory` (the Dockerfile) builds the app once per
+# worker. `uvicorn memory_mcp.server:app` still works: the module attribute `app` is built
+# lazily on first access, so importing this module never builds an app (no second model
+# load, bootstrap or admin pool per worker).
+_app: FastAPI | None = None
+
+
+def __getattr__(name: str):
+    if name == "app":
+        global _app
+        if _app is None:
+            _app = create_app()
+        return _app
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

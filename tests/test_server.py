@@ -102,3 +102,30 @@ async def test_legacy_mode_health_needs_no_token(app):
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         resp = await client.get("/health")
     assert resp.status_code == 200
+
+
+def test_import_does_not_build_app_and_app_attribute_builds_once(monkeypatch):
+    """`--factory` builds the app per worker; importing the module must not build another one."""
+    import importlib
+
+    import memory_mcp.config
+    import memory_mcp.server as server
+
+    monkeypatch.setenv("QDRANT_URL", "http://qdrant.invalid:6333")
+    try:
+        # create_app() calls load_config() first; reloading must not reach it.
+        with patch.object(memory_mcp.config, "load_config", side_effect=AssertionError("app built at import")):
+            importlib.reload(server)
+        assert "app" not in vars(server) and server._app is None
+        sentinel = object()
+        with patch.object(server, "create_app", return_value=sentinel) as build:
+            assert server.app is sentinel
+            assert server.app is sentinel
+            from memory_mcp.server import app as imported  # what `uvicorn memory_mcp.server:app` does
+            assert imported is sentinel
+        build.assert_called_once_with()
+        with pytest.raises(AttributeError):
+            server.no_such_attribute
+    finally:
+        monkeypatch.delenv("QDRANT_URL")
+        importlib.reload(server)
