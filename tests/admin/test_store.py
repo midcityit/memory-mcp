@@ -161,3 +161,50 @@ def test_purge_audit(store):
     assert store.purge_audit(NOW - timedelta(days=2)) == 1
     assert len(store.query_audit()[0]) == 2
     assert store.purge_audit(NOW - timedelta(days=2)) == 0
+
+
+def test_duplicate_key_raises(store):
+    store.insert_key(_key())
+    with pytest.raises(ValueError, match="exists"):
+        store.insert_key(_key())
+
+
+@pytest.mark.skipif(not PG_DSN, reason="TEST_ADMIN_PG_DSN not set")
+def test_pg_restricted_role_ensure_schema():
+    import psycopg
+    from psycopg.conninfo import make_conninfo
+
+    from memory_mcp.admin.pg_store import PgAdminStore
+
+    role = "mt_admin_test_restricted"
+    role_dsn = make_conninfo(PG_DSN, user=role, password="pw")
+    admin = _make_pg()
+    stores = [admin]
+    try:
+        with admin.pool.connection() as conn:
+            if conn.execute("SELECT 1 FROM pg_roles WHERE rolname=%s", (role,)).fetchone():
+                conn.execute(f"DROP OWNED BY {role}")
+            conn.execute(f"DROP ROLE IF EXISTS {role}")
+            conn.execute(f"CREATE ROLE {role} LOGIN PASSWORD 'pw'")
+            conn.execute(f"GRANT USAGE ON SCHEMA mt_admin TO {role}")
+            conn.execute(f"GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA mt_admin TO {role}")
+            conn.execute(f"GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA mt_admin TO {role}")
+            conn.execute(f"REVOKE CREATE ON DATABASE {conn.info.dbname} FROM {role}")
+        restricted = PgAdminStore(role_dsn)
+        stores.append(restricted)
+        restricted.ensure_schema()  # schema present: DDL skipped, no privilege error
+        restricted.insert_tenant(_tenant(), "admin")
+        assert restricted.get_tenant("alpha") == _tenant()
+
+        with admin.pool.connection() as conn:
+            conn.execute("DROP SCHEMA mt_admin CASCADE")
+        with pytest.raises(RuntimeError, match=r"schema\.sql"):
+            restricted.ensure_schema()
+    finally:
+        for s in stores[1:]:
+            s.close()
+        with admin.pool.connection() as conn:
+            conn.execute("DROP SCHEMA IF EXISTS mt_admin CASCADE")
+            conn.execute(f"DROP OWNED BY {role}")
+            conn.execute(f"DROP ROLE IF EXISTS {role}")
+        admin.close()

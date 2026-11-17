@@ -9,6 +9,7 @@ from memory_mcp.admin.models import ApiKey, RoleMapping, Tenant
 from memory_mcp.admin.store import decode_cursor, encode_cursor
 
 _LOCK_ID = 7300073
+_TABLES = ("tenant", "api_key", "role_mapping", "setting", "audit_log")
 _KEY_COLS = ("id, agent, secret_hash, tenants, access, denied_tools, source_repo_patterns, "
              "expires_at, created_at, created_by, revoked_at, last_used_at, rotated_from")
 _AUDIT_COLS = ("id", "ts", "principal_type", "principal_id", "agent", "acting_user",
@@ -48,6 +49,10 @@ class PgAdminStore:
         sql = resources.files("memory_mcp.admin").joinpath("schema.sql").read_text()
         try:
             with self.pool.connection() as conn:
+                # Postgres checks CREATE privilege even for IF NOT EXISTS, so a restricted
+                # role must skip the DDL when an admin already applied schema.sql.
+                if self._schema_present(conn):
+                    return
                 conn.execute("SELECT pg_advisory_lock(%s)", (_LOCK_ID,))
                 try:
                     conn.execute(sql)
@@ -60,6 +65,13 @@ class PgAdminStore:
             raise RuntimeError(
                 "cannot create schema mt_admin: grant CREATE on the database to this role "
                 "or apply admin/schema.sql manually") from e
+
+    @staticmethod
+    def _schema_present(conn) -> bool:
+        row = conn.execute(
+            "SELECT bool_and(to_regclass('mt_admin.' || t) IS NOT NULL) AS ok "
+            "FROM unnest(%s::text[]) AS t", (list(_TABLES),)).fetchone()
+        return bool(row["ok"])
 
     def ping(self) -> None:
         with self.pool.connection() as conn:
@@ -100,12 +112,14 @@ class PgAdminStore:
     # keys
     def insert_key(self, k: ApiKey) -> None:
         with self.pool.connection() as conn:
-            conn.execute(
+            cur = conn.execute(
                 f"INSERT INTO mt_admin.api_key ({_KEY_COLS}) "
-                "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+                "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT (id) DO NOTHING",
                 (k.id, k.agent, k.secret_hash, list(k.tenants), k.access, list(k.denied_tools),
                  list(k.source_repo_patterns), k.expires_at, k.created_at, k.created_by,
                  k.revoked_at, k.last_used_at, k.rotated_from))
+            if cur.rowcount == 0:
+                raise ValueError("exists")
 
     def get_key(self, id: str) -> ApiKey | None:
         with self.pool.connection() as conn:
