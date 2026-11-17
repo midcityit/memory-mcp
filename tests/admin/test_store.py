@@ -208,3 +208,42 @@ def test_pg_restricted_role_ensure_schema():
             conn.execute(f"DROP OWNED BY {role}")
             conn.execute(f"DROP ROLE IF EXISTS {role}")
         admin.close()
+
+
+@pytest.mark.skipif(not PG_DSN, reason="TEST_ADMIN_PG_DSN not set")
+def test_pg_ensure_schema_rechecks_after_taking_the_lock():
+    """A process that waited on the lock while another applied the schema skips the DDL."""
+    from memory_mcp.admin import pg_store
+
+    s = _make_pg()
+    try:
+        checks = iter([False, True])  # absent before the lock, present once we hold it
+        executed = []
+        with pytest.MonkeyPatch.context() as mp:
+            mp.setattr(pg_store.PgAdminStore, "_schema_present", staticmethod(lambda conn: next(checks)))
+            real_conn = s.pool.connection
+
+            class Spy:
+                def __init__(self, cm):
+                    self.cm = cm
+
+                def __enter__(self):
+                    conn = self.cm.__enter__()
+                    orig = conn.execute
+
+                    def execute(q, *a, **kw):
+                        executed.append(q if isinstance(q, str) else str(q))
+                        return orig(q, *a, **kw)
+                    conn.execute = execute
+                    return conn
+
+                def __exit__(self, *exc):
+                    return self.cm.__exit__(*exc)
+            mp.setattr(s.pool, "connection", lambda *a, **kw: Spy(real_conn(*a, **kw)))
+            s.ensure_schema()
+        assert any("pg_advisory_lock" in q for q in executed)
+        assert not any("CREATE" in q.upper() for q in executed), executed
+    finally:
+        with s.pool.connection() as conn:
+            conn.execute("DROP SCHEMA IF EXISTS mt_admin CASCADE")
+        s.close()

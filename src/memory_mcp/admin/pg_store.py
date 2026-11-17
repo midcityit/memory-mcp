@@ -58,7 +58,9 @@ class PgAdminStore:
                     return
                 conn.execute("SELECT pg_advisory_lock(%s)", (_LOCK_ID,))
                 try:
-                    conn.execute(sql)
+                    # Another process may have applied it while we waited for the lock.
+                    if not self._schema_present(conn):
+                        conn.execute(sql)
                     conn.commit()
                 finally:
                     conn.rollback()
