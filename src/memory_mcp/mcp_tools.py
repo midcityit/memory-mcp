@@ -17,9 +17,12 @@ _transport_security = TransportSecuritySettings(allowed_hosts=_allowed_hosts)
 
 mcp = MCPServer("memory-twin")
 
-# Bound by _init(). The tools are registered once at import and read this on every
-# call, because MCPServer keeps the first registration of a name.
+# Bound by _init(). The tools are registered once and read these on every call,
+# because MCPServer keeps the first registration of a name.
 _ops: MemoryOps | None = None
+_kg = None
+_kg_guard = None
+_kg_registered = False
 
 
 def streamable_http_app():
@@ -31,13 +34,21 @@ def streamable_http_app():
     )
 
 
-def _init(ops: MemoryOps, kg=None) -> None:
-    """Bind the live MemoryOps used by the memory tools, and register the kg tools."""
-    global _ops
+def _init(ops: MemoryOps, kg=None, kg_guard=None) -> None:
+    """Bind the live MemoryOps and KG used by the tools; register the kg tools on first use."""
+    global _ops, _kg, _kg_guard, _kg_registered
     _ops = ops
-    if kg is not None:
-        from memory_mcp.kg.tools import register
-        register(mcp, kg.service, kg.query)
+    _kg, _kg_guard = kg, kg_guard
+    if kg is not None and not _kg_registered:
+        from memory_mcp.kg.tools import register_resolved
+        register_resolved(mcp, _kg_deps)
+        _kg_registered = True
+
+
+def _kg_deps():
+    if _kg is None:
+        raise ToolError("The knowledge graph is not enabled on this server")
+    return _kg.service, _kg.query, _kg_guard
 
 
 def _call(ctx: Context, fn: Callable[[MemoryOps, Any], Any]) -> Any:

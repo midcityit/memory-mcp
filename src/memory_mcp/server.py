@@ -74,11 +74,20 @@ def create_app(*, admin_store: AdminStore | None = None, memory_store: MemorySto
 
     # Resolve the caller (scoped key, legacy API_TOKEN, or UI acting for a user) on every
     # path except /health, before routing; handlers and MCP tools read the Principal.
+    if kg is not None and tenants is not None:
+        # After bootstrap, which adopts the configured graphs as tenants.
+        from memory_mcp.kg import use_tenants
+        use_tenants(kg, tenants, store)
+
     authenticator = Authenticator(cfg, admin_store)
     audit = Audit(admin_store, authenticator.settings) if admin_store is not None else NullAudit()
     # Settings come from the authenticator's cache so admin writes invalidate one place.
     ops = MemoryOps(store, tenants, authenticator.settings, audit)
-    mcp_tools._init(ops, kg)
+    kg_guard = None
+    if kg is not None:
+        from memory_mcp.kg.authz import KGGuard
+        kg_guard = KGGuard(tenants, audit)
+    mcp_tools._init(ops, kg, kg_guard)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -121,7 +130,7 @@ def create_app(*, admin_store: AdminStore | None = None, memory_store: MemorySto
 
     if kg is not None:
         from memory_mcp.kg.rest import build_router
-        app.include_router(build_router(kg.service, kg.query, principal_from_request))
+        app.include_router(build_router(kg.service, kg.query, principal_from_request, kg_guard))
 
     @app.get("/health")
     def health():

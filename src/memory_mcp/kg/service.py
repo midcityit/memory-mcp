@@ -1,6 +1,7 @@
 """Validated writes to the knowledge graph."""
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import replace
 
 from opentelemetry import metrics
@@ -249,9 +250,13 @@ class KGService:
         _writes.add(1, {"graph": graph, "op": "retire_entity"})
         return {"key": key, "status": "retired", "edges_retired": len(edges)}
 
-    def delete_entity(self, graph, key, confirm=False) -> dict:
+    def delete_entity(self, graph, key, confirm=False, *,
+                      xref_removable: Callable[[XRef], bool] | None = None) -> dict:
         """Hard-delete (purge) an entity, its edges, and any xrefs touching it. Irreversible —
-        prefer retire_entity. Guarded by an explicit confirm flag."""
+        prefer retire_entity. Guarded by an explicit confirm flag.
+
+        With `xref_removable`, only the xrefs it accepts are deleted (and counted); the others
+        are kept, marked dangling, for whoever may manage their other endpoint."""
         self.reg.require_graph(graph)
         if not confirm:
             raise KGError("confirm_required",
@@ -261,7 +266,16 @@ class KGService:
             raise KGError("not_found", f"No entity '{key}' in graph '{graph}'", field="key",
                           suggestions=["kg_resolve to find the right key"])
         edges_removed = self.store.delete_entity_hard(graph, key)
-        xrefs_removed = self.store.delete_xrefs_touching(fq_key(graph, key))
+        if xref_removable is None:
+            xrefs_removed = self.store.delete_xrefs_touching(fq_key(graph, key))
+        else:
+            xrefs_removed = 0
+            for x in self.store.xrefs_touching(fq_key(graph, key)):
+                if xref_removable(x):
+                    self.store.delete_xref(x.src, x.relation, x.dst)
+                    xrefs_removed += 1
+                else:
+                    self.store.put_xref(replace(x, dangling=True))
         _writes.add(1, {"graph": graph, "op": "delete_entity"})
         return {"key": key, "status": "deleted", "edges_removed": edges_removed, "xrefs_removed": xrefs_removed}
 

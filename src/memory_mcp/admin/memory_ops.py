@@ -9,7 +9,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
-from memory_mcp.admin.audit import Audit
+from memory_mcp.admin.audit import AuditSink
 from memory_mcp.admin.authz import REST_ACTION, authorize, repo_allowed, resolve_tenant, stamped_agent
 from memory_mcp.admin.models import AuthzError, Principal
 from memory_mcp.admin.tenants import TenantService
@@ -26,7 +26,7 @@ DELETE = REST_ACTION[("DELETE", "/memories/{id}")]
 
 class MemoryOps:
     def __init__(self, store: MemoryStore, tenants: TenantService | None,
-                 settings: Callable[[], dict[str, Any]], audit: Audit):
+                 settings: Callable[[], dict[str, Any]], audit: AuditSink):
         """`tenants` is None in legacy mode: one collection, no `tenant` argument accepted."""
         self._store = store
         self._tenants = tenants
