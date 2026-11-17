@@ -5,7 +5,8 @@ No authorization decisions are made here. Three kinds of caller exist:
 - a scoped API key (``mt_<id>_<secret>``), looked up in the admin store;
 - the legacy shared ``API_TOKEN``;
 - the web UI (``UI_TOKEN``) acting for a signed-in human described by the
-  ``X-MT-User``, ``X-MT-User-Name`` and ``X-MT-Groups`` headers.
+  ``X-MT-User`` and ``X-MT-User-Name`` headers and the optional ``X-MT-Groups``
+  header (absent means no groups).
 
 With no admin store (legacy mode) only ``API_TOKEN`` is accepted.
 """
@@ -189,9 +190,10 @@ class Authenticator:
         if user is None and path == GROUPS_KNOWN_PATH:
             return Principal(kind="ui", id="", agent=None, roles={})
         name = h.get("x-mt-user-name")
-        groups_raw = h.get("x-mt-groups")
-        if user is None or name is None or groups_raw is None:
-            raise _bad_ui_headers("X-MT-User, X-MT-User-Name and X-MT-Groups headers are required")
+        # An absent X-MT-Groups means the user is in no groups (some sign-ins send none).
+        groups_raw = h.get("x-mt-groups", "")
+        if user is None or name is None:
+            raise _bad_ui_headers("X-MT-User and X-MT-User-Name headers are required")
         if not user or len(user) > MAX_USER_ID_LEN:
             raise _bad_ui_headers(f"X-MT-User must be 1-{MAX_USER_ID_LEN} characters")
         groups = [g.strip() for g in groups_raw.split(",") if g.strip()]

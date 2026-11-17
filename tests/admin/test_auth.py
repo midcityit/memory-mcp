@@ -139,11 +139,20 @@ async def test_http_bodies_identical_for_revoked_expired_unknown(store, clock):
 
 # ── UI headers ──────────────────────────────────────────────────────────────
 
-@pytest.mark.parametrize("drop", ["X-MT-User", "X-MT-User-Name", "X-MT-Groups"])
+@pytest.mark.parametrize("drop", ["X-MT-User", "X-MT-User-Name"])
 def test_ui_token_missing_header_is_400(auth, drop):
     h = ui_headers()
     del h[drop]
     assert status_of(lambda: auth.resolve(h))[0] == 400
+
+
+def test_ui_token_without_groups_header_means_no_groups(auth, store):
+    store.replace_mappings([RoleMapping(G1, "alpha", "editor")], by="t")
+    h = ui_headers()
+    del h["X-MT-Groups"]
+    p = auth.resolve(h)
+    assert (p.kind, p.id, p.user_name, p.roles) == ("ui", "u1", "Ada", {})
+    assert auth.resolve(ui_headers()).roles == {"alpha": "editor"}  # same user, groups sent
 
 
 def test_ui_token_without_any_headers_is_400(auth):
