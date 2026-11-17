@@ -53,6 +53,11 @@ class MemoryStore:
             )
 
     @property
+    def stale_days(self) -> int:
+        """The configured staleness threshold (STALE_DAYS)."""
+        return self._stale_days
+
+    @property
     def client(self) -> QdrantClient:
         return self._client
 

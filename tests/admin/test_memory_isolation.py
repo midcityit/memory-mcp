@@ -732,3 +732,29 @@ async def test_kg_pg_dsn_alone_keeps_legacy_mode():
         r = await rest.list(LEGACY, tenant="alpha")
         assert (r.status, r.code) == (400, "tenant_not_supported")
     assert mstore.find_by_name("plain", "global", collection=COLLECTION) is not None
+
+
+# ── stale_days admin setting ────────────────────────────────────────────────────
+@pytest.mark.parametrize("transport", TRANSPORTS)
+async def test_stale_days_setting_changes_staleness_on_read(env, transport):
+    from datetime import timedelta
+    ten_days_ago = (datetime.now(timezone.utc) - timedelta(days=10)).isoformat()
+    rid = MemoryStore.new_id()
+    env.mstore.upsert(MemoryRecord(id=rid, type="note", name="aging", content="aging content",
+                                   source_repo="global", agent="seed", tags=[],
+                                   created_at=ten_days_ago, updated_at=ten_days_ago), collection=COLLECTION)
+    c, k = Caller(transport, env.client), env.key()
+
+    async def stale_flags() -> set[bool]:
+        flags = {m["stale"] for m in (await c.list(k)).data} | {m["stale"] for m in (await c.search(k, "aging")).data}
+        if transport == "rest":
+            flags.add((await c.get(k, rid)).data["stale"])
+        return flags
+
+    assert await stale_flags() == {False}  # STALE_DAYS=30
+    env.settings(stale_days=5)
+    assert await stale_flags() == {True}
+    env.settings(stale_days=60)
+    assert await stale_flags() == {False}
+    env.settings(stale_days="5")  # not a valid int: STALE_DAYS applies
+    assert await stale_flags() == {False}

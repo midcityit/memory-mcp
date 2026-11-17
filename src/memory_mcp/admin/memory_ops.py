@@ -69,10 +69,22 @@ class MemoryOps:
         if record is not None and not repo_allowed(p, record.source_repo):
             self._deny(p, action, attempt, memory_id, "source_repo_not_allowed")
             return None
+        if record is not None:
+            self._stale([record])
         return record
 
     def _filter(self, p: Principal, records: list[MemoryRecord]) -> list[MemoryRecord]:
-        return [r for r in records if repo_allowed(p, r.source_repo)]
+        return self._stale([r for r in records if repo_allowed(p, r.source_repo)])
+
+    def _stale_days(self) -> int:
+        """The `stale_days` admin setting when it is a valid int, else STALE_DAYS."""
+        value = self._settings().get("stale_days") if self._tenants is not None else None
+        if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+            return value
+        return self._store.stale_days
+
+    def _stale(self, records: list[MemoryRecord]) -> list[MemoryRecord]:
+        return self._store.annotate_staleness(records, self._stale_days()) if records else records
 
     def _check_type(self, type: str) -> None:
         allowed = self._settings().get("allowed_types") if self._tenants is not None else None
