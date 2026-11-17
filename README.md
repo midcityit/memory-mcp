@@ -219,9 +219,11 @@ python scripts/split_memories.py --qdrant-url "$QDRANT_URL" \
 ```
 
 - Rules are checked in the order given and the first match wins. `source_repo=` takes a case-sensitive glob; `tag=` matches one tag exactly. Overrides beat rules. Anything unmatched stays with `--default`, which must be the bootstrap tenant. Its points never move.
-- `--apply` re-reads live data (it does not use the CSV), takes a Qdrant snapshot of the source collection and prints its name, copies the points, checks that every one arrived, and only then deletes them from the source. If the snapshot or the check fails, nothing is deleted and the exit code is non-zero.
-- The snapshot is the rollback. Restore it as in "Qdrant Backup & Restore" below.
-- Safe to rerun: points already in the target are skipped.
+- `--apply` re-reads live data (it does not use the CSV), prints which collection each tenant goes to, takes a Qdrant snapshot of the source collection and prints its name (no snapshot if nothing moves), copies the points, and checks that every copied point matches the source (payload and vector). If a target already holds the same id with different content, it is overwritten from the source. Just before deleting each batch, it re-reads the source and deletes only points still identical to their copy. If the snapshot or any check fails, nothing is deleted and the exit code is non-zero.
+- **Pause writes** for the tenants being moved (or switch their agents to scoped keys first) while `--apply` runs. A memory edited during the run is left in the source, listed by id, and the run exits non-zero with "Some memories changed during the split; rerun --apply to finish."
+- **A rerun is safe.** It copies the newer version and deletes the source point. Points already in the target and unchanged are skipped.
+- The snapshot is the rollback. It is stored on the Qdrant node that took it, so restore is per node (see "Qdrant Backup & Restore" below).
+- The source must use a single unnamed vector (as memory-mcp does); the script refuses anything else before writing.
 - Order of work: start in multi-tenant mode first, then in one short window run the split and switch the agents of the other tenant to their scoped keys. Until switched, those agents still use the legacy token, which reads the default tenant and will not find the moved memories.
 - Use `--source` and `--collection-prefix` if your collection names differ from the defaults (`memories`, `memories_`).
 

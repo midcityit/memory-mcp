@@ -62,6 +62,10 @@ def do_plan(c, overrides=None):
     return sm.plan(list(sm.scroll_all(c, SRC)), RULES, "alpha", overrides)
 
 
+def counts(r):
+    return {k: v for k, v in r.items() if k not in ("changed_ids", "overwritten", "changed_after_copy")}
+
+
 def ids(c, coll):
     return {str(r.id) for r in sm.scroll_all(c, coll)}
 
@@ -115,8 +119,8 @@ def test_dry_run_writes_nothing(client, tmp_path, monkeypatch):
 
 def test_apply_moves_keeps_ids_and_vectors(client):
     res = sm.apply(client, SRC, do_plan(client), COLLS, snap_ok)
-    assert res["beta"] == {"copied": 2, "skipped_existing": 0, "deleted": 2}
-    assert res["gamma"] == {"copied": 1, "skipped_existing": 0, "deleted": 1}
+    assert counts(res["beta"]) == {"copied": 2, "skipped_existing": 0, "deleted": 2}
+    assert counts(res["gamma"]) == {"copied": 1, "skipped_existing": 0, "deleted": 1}
     assert "alpha" not in res
     assert ids(client, SRC) == {str(uuid.UUID(int=1)), str(uuid.UUID(int=5))}
     moved = client.retrieve("memories_beta", ids=[str(uuid.UUID(int=2)), str(uuid.UUID(int=3))],
@@ -151,7 +155,7 @@ def test_rerun_after_copy_without_delete_skips_existing(client):
     back = client.retrieve("memories_beta", ids=list(ids(client, "memories_beta")), with_vectors=True)
     client.upsert(SRC, points=[PointStruct(id=r.id, vector=r.vector, payload=r.payload) for r in back])
     res = sm.apply(client, SRC, do_plan(client), COLLS, snap_ok)
-    assert res["beta"] == {"copied": 0, "skipped_existing": 2, "deleted": 2}
+    assert counts(res["beta"]) == {"copied": 0, "skipped_existing": 2, "deleted": 2}
     assert len(ids(client, "memories_beta")) == 2
 
 
@@ -187,3 +191,100 @@ def test_target_collection_matches_server_config(client):
     info = client.get_collection("memories_beta")
     assert info.config.params.vectors.size == VECTOR_DIM
     assert info.config.params.vectors.distance == Distance.COSINE
+
+
+# --- fix round 1: data safety --------------------------------------------
+
+def _seed_target(c, name, uid, vector, payload):
+    c.create_collection(name, vectors_config=VectorParams(size=VECTOR_DIM, distance=Distance.COSINE))
+    c.upsert(name, points=[PointStruct(id=str(uuid.UUID(int=uid)), vector=vector, payload=payload)])
+
+
+def test_preseeded_target_with_different_content_is_overwritten_then_source_deleted(client):
+    other = [1.0] + [0.0] * (VECTOR_DIM - 1)
+    _seed_target(client, "memories_beta", 2, other, {"name": "stale"})
+    res = sm.apply(client, SRC, do_plan(client), COLLS, snap_ok)
+    assert res["beta"]["overwritten"] == 1 and res["beta"]["copied"] == 1
+    got = client.retrieve("memories_beta", ids=[str(uuid.UUID(int=2))], with_vectors=True)[0]
+    want = client.expected[str(uuid.UUID(int=2))]
+    assert got.payload == want.payload and got.vector == pytest.approx(want.vector)
+    assert str(uuid.UUID(int=2)) not in ids(client, SRC)
+
+
+def test_verify_fails_when_target_vector_differs(client):
+    class Corrupting:
+        def __init__(self, c):
+            self._c = c
+        def upsert(self, coll, points):
+            for p in points:
+                p.vector = [0.0] * (VECTOR_DIM - 1) + [1.0]
+            return self._c.upsert(coll, points=points)
+        def __getattr__(self, n):
+            return getattr(self._c, n)
+    with pytest.raises(sm.ApplyError, match="verify failed"):
+        sm.apply(Corrupting(client), SRC, do_plan(client), COLLS, snap_ok)
+    assert ids(client, SRC) == set(client.expected)
+
+
+def _edit_source_before_confirm(monkeypatch, client, uid):
+    orig = sm._confirm_unchanged
+    done = []
+    def hook(c, source, target, batch):
+        if not done:
+            done.append(1)
+            c.set_payload(source, payload={"name": "edited"}, points=[str(uuid.UUID(int=uid))])
+        return orig(c, source, target, batch)
+    monkeypatch.setattr(sm, "_confirm_unchanged", hook)
+
+
+def test_source_edit_between_copy_and_delete_is_kept_and_rerun_finishes(client, monkeypatch):
+    _edit_source_before_confirm(monkeypatch, client, 2)
+    res = sm.apply(client, SRC, do_plan(client), COLLS, snap_ok)
+    changed = str(uuid.UUID(int=2))
+    assert res["beta"]["changed_ids"] == [changed] and res["beta"]["changed_after_copy"] == 1
+    assert res["beta"]["deleted"] == 1
+    assert changed in ids(client, SRC)
+    monkeypatch.undo()
+    res = sm.apply(client, SRC, do_plan(client), COLLS, snap_ok)
+    assert res["beta"]["overwritten"] == 1 and res["beta"]["deleted"] == 1
+    assert changed not in ids(client, SRC)
+    assert client.retrieve("memories_beta", ids=[changed])[0].payload["name"] == "edited"
+
+
+def _main_args():
+    return ["--qdrant-url", "x", "--default", "alpha", "--rule", "source_repo=org-b/*:beta",
+            "--rule", "tag=gamma:gamma", "--apply"]
+
+
+def test_main_exits_nonzero_when_something_changed(client, monkeypatch, capsys):
+    monkeypatch.setattr(sm, "QdrantClient", lambda url: client)
+    monkeypatch.setattr(sm, "make_snapshot_fn", lambda c: snap_ok)
+    _edit_source_before_confirm(monkeypatch, client, 2)
+    assert sm.main(_main_args()) == 1
+    cap = capsys.readouterr()
+    assert "Some memories changed during the split; rerun --apply to finish." in cap.err
+    assert str(uuid.UUID(int=2)) in cap.out
+
+
+def test_snapshot_skipped_when_nothing_moves(client):
+    def boom(_c):
+        raise AssertionError("snapshot taken")
+    p = [(pid, "alpha") for pid, _ in do_plan(client)]
+    assert sm.apply(client, SRC, p, COLLS, boom) == {}
+
+
+def test_named_vector_source_fails_before_any_write():
+    c = QdrantClient(":memory:")
+    c.create_collection(SRC, vectors_config={"v": VectorParams(size=VECTOR_DIM, distance=Distance.COSINE)})
+    p = [(str(uuid.UUID(int=1)), "beta")]
+    with pytest.raises(sm.ApplyError, match="named vectors"):
+        sm.apply(c, SRC, p, COLLS, lambda _c: pytest.fail("snapshot taken"))
+    assert {x.name for x in c.get_collections().collections} == {SRC}
+
+
+def test_unmatched_override_warns(client, monkeypatch, tmp_path, capsys):
+    ov = tmp_path / "ov.csv"
+    ov.write_text("id,tenant\nnot-a-point,gamma\n")
+    monkeypatch.setattr(sm, "QdrantClient", lambda url: client)
+    assert sm.main(["--qdrant-url", "x", "--default", "alpha", "--overrides", str(ov)]) == 0
+    assert "override id not-a-point matches no point" in capsys.readouterr().err

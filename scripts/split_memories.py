@@ -18,7 +18,8 @@ Points that match no rule stay with --default (the bootstrap tenant) and never m
 Dry run (default) only reads: it prints counts and, with --out, writes a CSV
 (id,name,source_repo,tags,tenant) to review. --apply re-evaluates everything against
 live data, takes a snapshot of the source (the rollback; it aborts if that fails),
-copies the points, verifies they all arrived, and only then deletes them from the source.
+copies the points, verifies they all arrived intact, and only then deletes them from the
+source, re-checking each batch just before deleting. Pause writes for the tenants being moved.
 A rerun after a failure is safe: points already in the target are skipped.
 
 Example:
@@ -127,13 +128,54 @@ def _ensure_collection(client: QdrantClient, name: str) -> None:
     MemoryStore.ensure_collection(SimpleNamespace(_client=client), name)
 
 
+VECTOR_TOL = 1e-6
+CHANGED_MSG = "Some memories changed during the split; rerun --apply to finish."
+
+
+def _same(a, b) -> bool:
+    """Same payload and (within VECTOR_TOL) same vector."""
+    if (a.payload or {}) != (b.payload or {}):
+        return False
+    va, vb = a.vector, b.vector
+    return len(va) == len(vb) and all(abs(x - y) <= VECTOR_TOL for x, y in zip(va, vb))
+
+
+def _get(client: QdrantClient, collection: str, ids: list[str]) -> dict[str, object]:
+    recs = client.retrieve(collection, ids=ids, with_payload=True, with_vectors=True)
+    return {str(r.id): r for r in recs}
+
+
+def _confirm_unchanged(client: QdrantClient, source: str, target: str,
+                       batch: list[str]) -> tuple[list[str], list[str]]:
+    """Re-read `batch` on both sides; return (identical ids, ids changed or missing)."""
+    src, dst = _get(client, source, batch), _get(client, target, batch)
+    same = [i for i in batch if i in src and i in dst and _same(src[i], dst[i])]
+    keep = set(same)
+    # A point already gone from the source needs no delete and is not "changed".
+    return same, [i for i in batch if i not in keep and i in src]
+
+
+def _check_unnamed_vectors(client: QdrantClient, source: str) -> None:
+    vectors = client.get_collection(source).config.params.vectors
+    if isinstance(vectors, dict):
+        raise ApplyError(
+            f"{source!r} uses named vectors, which this script does not support; nothing written"
+        )
+
+
 def apply(client: QdrantClient, source: str, plan: list[tuple[str, str]],
           collections: dict[str, str], snapshot_fn: Callable[[str], str]) -> dict:
     """Copy planned points to their tenants' collections, verify, then delete from source.
 
     `collections` maps tenant -> collection. A tenant whose collection is the source
-    keeps its points. Returns {tenant: {copied, skipped_existing, deleted}}.
-    Raises ApplyError (or the snapshot error) before any delete if something is off.
+    keeps its points. The source is authoritative until a point is deleted: a target
+    point with the same id but different content is overwritten. Before each delete
+    batch the source points are re-read and only those still identical to their target
+    copy are deleted; the others stay and are reported.
+
+    Returns {tenant: {copied, skipped_existing, overwritten, deleted,
+    changed_after_copy, changed_ids}}. Raises ApplyError (or the snapshot error) before
+    any delete if something is off.
     """
     moves: dict[str, list[str]] = {}
     for pid, tenant in plan:
@@ -142,42 +184,61 @@ def apply(client: QdrantClient, source: str, plan: list[tuple[str, str]],
         if collections[tenant] != source:
             moves.setdefault(tenant, []).append(pid)
 
+    if not moves:
+        print("nothing to move; no snapshot taken")
+        return {}
+    _check_unnamed_vectors(client, source)
+    for tenant in sorted(collections):
+        n = len(moves.get(tenant, []))
+        print(f"{tenant} -> {collections[tenant]}: " + (f"{n} to move" if n else "stays"))
+
     snapshot_fn(source)  # raises on failure: nothing written yet
 
-    result = {t: {"copied": 0, "skipped_existing": 0, "deleted": 0} for t in moves}
+    result = {t: {"copied": 0, "skipped_existing": 0, "overwritten": 0, "deleted": 0,
+                  "changed_after_copy": 0, "changed_ids": []} for t in moves}
     for tenant, ids in moves.items():
         target = collections[tenant]
         _ensure_collection(client, target)
         for batch in _chunks(ids):
-            present = {str(r.id) for r in client.retrieve(target, ids=batch, with_payload=False)}
-            todo = [i for i in batch if i not in present]
-            result[tenant]["skipped_existing"] += len(batch) - len(todo)
-            if not todo:
-                continue
-            found = client.retrieve(source, ids=todo, with_payload=True, with_vectors=True)
-            if len(found) != len(todo):
+            src, dst = _get(client, source, batch), _get(client, target, batch)
+            missing = [i for i in batch if i not in src]
+            if missing:
                 raise ApplyError(
-                    f"{len(todo) - len(found)} planned point(s) for {tenant!r} vanished from "
+                    f"{len(missing)} planned point(s) for {tenant!r} vanished from "
                     f"{source!r} during the copy; nothing deleted"
                 )
-            client.upsert(target, points=[
-                PointStruct(id=r.id, vector=r.vector, payload=r.payload) for r in found
-            ])
-            result[tenant]["copied"] += len(found)
-
-    for tenant, ids in moves.items():
-        target = collections[tenant]
-        there = sum(len(client.retrieve(target, ids=b, with_payload=False)) for b in _chunks(ids))
-        if there != len(ids):
-            raise ApplyError(
-                f"verify failed for {tenant!r}: {there} of {len(ids)} points in {target!r}; "
-                "nothing deleted"
-            )
+            todo = []
+            for i in batch:
+                if i not in dst:
+                    result[tenant]["copied"] += 1
+                    todo.append(i)
+                elif _same(src[i], dst[i]):
+                    result[tenant]["skipped_existing"] += 1
+                else:
+                    result[tenant]["overwritten"] += 1
+                    todo.append(i)
+            if todo:
+                client.upsert(target, points=[
+                    PointStruct(id=src[i].id, vector=src[i].vector, payload=src[i].payload)
+                    for i in todo
+                ])
+            # Verify what the target now holds against what was just read from the source.
+            after = _get(client, target, batch)
+            bad = [i for i in batch if i not in after or not _same(src[i], after[i])]
+            if bad:
+                raise ApplyError(
+                    f"verify failed for {tenant!r}: {len(bad)} of {len(batch)} points in "
+                    f"{target!r} are missing or differ from the source; nothing deleted"
+                )
 
     for tenant, ids in moves.items():
         for batch in _chunks(ids):
-            client.delete(source, points_selector=PointIdsList(points=batch))
-        result[tenant]["deleted"] = len(ids)
+            same, changed = _confirm_unchanged(client, source, collections[tenant], batch)
+            if same:
+                client.delete(source, points_selector=PointIdsList(points=same))
+            result[tenant]["deleted"] += len(same)
+            result[tenant]["changed_after_copy"] += len(changed)
+            result[tenant]["changed_ids"] += changed
     return result
 
 
@@ -190,6 +251,11 @@ def make_snapshot_fn(client: QdrantClient) -> Callable[[str], str]:
         print(f"snapshot of {collection!r}: {name}")
         return name
     return snapshot
+
+
+def unmatched_overrides(planned: list[tuple[str, str]], overrides: Mapping[str, str]) -> list[str]:
+    known = {pid for pid, _ in planned}
+    return sorted(i for i in overrides if i not in known)
 
 
 def read_overrides(path: str | None) -> dict[str, str]:
@@ -253,6 +319,8 @@ def main(argv: list[str] | None = None) -> int:
     counts = Counter(t for _, t in planned)
     for tenant, n in sorted(counts.items()):
         print(f"{tenant}: {n}" + ("  (stays)" if tenant == default else ""))
+    for pid in unmatched_overrides(planned, overrides):
+        print(f"warning: override id {pid} matches no point in {args.source!r}", file=sys.stderr)
 
     if args.out:
         write_plan_csv(args.out, points, planned)
@@ -269,8 +337,17 @@ def main(argv: list[str] | None = None) -> int:
     except Exception as e:
         print(f"error: {e}; nothing deleted from {args.source!r}", file=sys.stderr)
         return 1
+    changed = False
     for tenant, r in sorted(result.items()):
-        print(f"{tenant}: copied={r['copied']} skipped_existing={r['skipped_existing']} deleted={r['deleted']}")
+        print(f"{tenant}: copied={r['copied']} skipped_existing={r['skipped_existing']} "
+              f"overwritten={r['overwritten']} deleted={r['deleted']} "
+              f"changed_after_copy={r['changed_after_copy']}")
+        for pid in r["changed_ids"]:
+            changed = True
+            print(f"  changed after copy, left in {args.source!r}: {pid}")
+    if changed:
+        print(CHANGED_MSG, file=sys.stderr)
+        return 1
     return 0
 
 
