@@ -705,3 +705,81 @@ async def test_hard_delete_audits_each_graph_whose_xrefs_it_touched(env, transpo
     ok(await mcp(env, both, "kg_delete_entity", graph="alpha", key=A1, confirm=True))
     assert rows_for(env, both, "kg_delete_entity") == [("alpha", A1, "allowed", None),
                                                        ("beta", A1, "allowed", {"xrefs_removed": 1})]
+
+
+# ── agent stamping: KG writes record the key's agent / UI user, not a declared one ──
+def _kg_store():
+    return mcp_tools._kg.store
+
+
+def _edge(graph: str, src: str, dst: str, relation: str = "depends_on"):
+    return _kg_store().current_edge(graph, src, relation, dst)
+
+
+async def test_mcp_kg_writes_stamp_the_key_agent(env):
+    k = env.key(tenants=("alpha", "beta"), agent="agent-a")
+    await upsert(env, k, "alpha", "ALPHA-1", agent="spoofed")
+    await upsert(env, k, "alpha", "ALPHA-2")
+    ok(await mcp(env, k, "kg_link", graph="alpha", src=A1, relation="depends_on", dst=A2, agent="spoofed"))
+    ok(await mcp(env, k, "kg_batch", graph="beta", agent="spoofed", entities=[
+        {"provider": "logical", "type": "jira_issue", "native_id": "BETA-1", "agent": "item-spoof"},
+        {"provider": "logical", "type": "jira_issue", "native_id": "BETA-2"}],
+        edges=[{"src": B1, "relation": "depends_on", "dst": B2, "agent": "item-spoof"}]))
+    ok(await mcp(env, k, "kg_xref", note="n", agent="spoofed", **XREF))
+    store = _kg_store()
+    assert store.get_entity("alpha", A1).agent == "agent-a"
+    assert _edge("alpha", A1, A2).agent == "agent-a"
+    assert store.get_entity("beta", B1).agent == "agent-a" and store.get_entity("beta", B2).agent == "agent-a"
+    assert _edge("beta", B1, B2).agent == "agent-a"
+    assert store.get_xref(XREF["src"], XREF["relation"], XREF["dst"]).agent == "agent-a"
+
+
+async def test_mcp_kg_unlink_and_retire_stamp_the_ui_user(env):
+    k = env.key(agent="agent-a")
+    await upsert(env, k, "alpha", "ALPHA-1")
+    await upsert(env, k, "alpha", "ALPHA-2")
+    ok(await mcp(env, k, "kg_link", graph="alpha", src=A1, relation="depends_on", dst=A2))
+    ok(await mcp(env, k, "kg_link", graph="alpha", src=A2, relation="depends_on", dst=A1))
+    editor = ui_headers(name="Ada Example", groups=(G_EDIT,))
+    ok(await mcp(env, editor, "kg_unlink", graph="alpha", src=A1, relation="depends_on", dst=A2, reason="moved"))
+    unlinked = [e for e in _kg_store().iter_edges("alpha") if (e.src, e.dst) == (A1, A2) and e.valid_to]
+    assert unlinked and unlinked[-1].agent == "ui:Ada Example"
+    ok(await mcp(env, editor, "kg_retire_entity", graph="alpha", key=A2, reason="gone"))
+    assert _kg_store().get_entity("alpha", A2).agent == "ui:Ada Example"
+    retired_edges = [e for e in _kg_store().iter_edges("alpha") if (e.src, e.dst) == (A2, A1)]
+    assert retired_edges and all(e.agent == "ui:Ada Example" for e in retired_edges)
+
+
+async def test_rest_import_stamps_the_key_agent(env):
+    k = env.key(tenants=("alpha", "beta"), agent="agent-a")
+    await upsert(env, k, "beta", "BETA-1")
+    body = ndjson(
+        {"record": "entity", "provider": "logical", "type": "jira_issue", "native_id": "ALPHA-1",
+         "agent": "spoofed"},
+        {"record": "entity", "provider": "logical", "type": "jira_issue", "native_id": "ALPHA-2"},
+        {"record": "edge", "src": A1, "relation": "depends_on", "dst": A2, "agent": "spoofed"},
+        {"record": "xref", "note": "n", "agent": "spoofed", **XREF})
+    r = ok(await rest(env, k, "POST", "/kg/alpha/import", content=body))
+    assert r["status"] == "ok" and r["xrefs"] == {"imported": 1, "errors": []}
+    store = _kg_store()
+    assert store.get_entity("alpha", A1).agent == "agent-a"
+    assert _edge("alpha", A1, A2).agent == "agent-a"
+    assert store.get_xref(XREF["src"], XREF["relation"], XREF["dst"]).agent == "agent-a"
+
+
+async def test_legacy_mode_kg_writes_keep_the_declared_agent(legacy_env):
+    await upsert(legacy_env, LEGACY, "alpha", "ALPHA-1", agent="declared-agent")
+    await upsert(legacy_env, LEGACY, "alpha", "ALPHA-2")
+    ok(await mcp(legacy_env, LEGACY, "kg_link", graph="alpha", src=A1, relation="depends_on", dst=A2,
+                 agent="declared-agent"))
+    ok(await mcp(legacy_env, LEGACY, "kg_unlink", graph="alpha", src=A1, relation="depends_on", dst=A2,
+                 reason="r"))
+    store = _kg_store()
+    assert store.get_entity("alpha", A1).agent == "declared-agent"
+    assert store.get_entity("alpha", A2).agent == "claude-code"
+    unlinked = [e for e in store.iter_edges("alpha") if (e.src, e.dst) == (A1, A2)]
+    assert unlinked and all(e.agent == "declared-agent" for e in unlinked)
+    body = ndjson({"record": "xref", "note": "n", "agent": "declared-agent", "src": f"alpha::{A1}",
+                   "relation": "similar_to", "dst": f"alpha::{A2}"})
+    ok(await rest(legacy_env, LEGACY, "POST", "/kg/alpha/import", content=body))
+    assert store.get_xref(f"alpha::{A1}", "similar_to", f"alpha::{A2}").agent == "declared-agent"

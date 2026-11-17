@@ -196,7 +196,7 @@ Without `ADMIN_PG_DSN` the server runs in legacy mode: one shared token (`API_TO
 - **Tenant.** A separate set of memories with its own Qdrant collection. The id matches `^[a-z][a-z0-9_]{1,31}$`; the collection is `memories_<id>`. The first tenant (`BOOTSTRAP_TENANT_ID`) adopts the existing `memories` collection, so current data stays where it is. It is also the default tenant for the legacy token and the UI. Tenants can be disabled (calls are rejected, data stays); they cannot be deleted.
 - **Key format.** `mt_<id>_<secret>`. The full key is shown once, when it is created or rotated, and cannot be read back. Store it straight away (for example as `<cctech-keyvault:SECRET-NAME>`).
 - **Scope.** Each key names the tenants it may use, read or write access, optionally tools it may not call, optionally `source_repo` patterns it may touch, and an optional expiry. Rotating a key makes a new one with the same scope; the old one keeps working for 24 hours so an agent can be switched without downtime. Revoking takes effect within about 30 seconds.
-- **Agent stamping.** Memories written with a scoped key are stamped with the key's agent name, not whatever the caller claims.
+- **Agent stamping.** Memories and knowledge-graph writes (entities, edges, xrefs, batches and imports, including per-item `agent` fields) made with a scoped key are stamped with the key's agent name, and those made through the UI with `ui:<user name>`, not whatever the caller claims. The legacy token keeps the declared agent.
 - **Legacy token.** `API_TOKEN` keeps working and acts on the default tenant. Once the Keys screen shows it unused, retire it by removing `API_TOKEN` (and keep `UI_TOKEN`).
 - **`/docs`.** The API docs page now needs a token like every other route.
 

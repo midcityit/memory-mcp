@@ -11,6 +11,7 @@ from opentelemetry import metrics
 
 from memory_mcp.admin.audit import NullAudit
 from memory_mcp.admin.auth import principal_from_ctx
+from memory_mcp.admin.authz import stamped_agent
 from memory_mcp.admin.models import AuthzError, Principal
 from memory_mcp.kg.authz import KGGuard
 from memory_mcp.kg.models import KGError
@@ -47,6 +48,18 @@ class _Call:
     @property
     def visible(self) -> frozenset[str] | None:
         return self.guard.visible(self.p)
+
+    def agent(self, declared: str | None) -> str | None:
+        """The agent a write records: stamped from the key or UI user when tenants are enforced;
+        legacy callers (and legacy mode) keep `declared`."""
+        if self.p is None or self.p.kind == "legacy":
+            return declared
+        return stamped_agent(self.p, declared)
+
+    @property
+    def forced(self) -> bool:
+        """Whether batch items must use the stamped agent instead of their own."""
+        return self.p is not None and self.p.kind != "legacy"
 
     def written(self, graphs, target: str | None, result: dict) -> dict:
         return self.guard.written(self.p, self.action, graphs, target, self.guard.scrub(self.p, result))
@@ -92,7 +105,7 @@ def register_resolved(mcp, deps: Callable[[], Deps]) -> None:
         def body(service, _query, c):
             c.graph(graph, native_id)
             out = service.upsert_entity(graph, provider, type, native_id, display_name, aliases, properties,
-                                        memory_ids, agent)
+                                        memory_ids, c.agent(agent))
             return c.written(graph, out["key"], out)
         return run(ctx, "kg_upsert_entity", graph, body)
 
@@ -107,7 +120,7 @@ def register_resolved(mcp, deps: Callable[[], Deps]) -> None:
         def body(service, _query, c):
             c.graph(graph, target)
             return c.written(graph, target, service.link(graph, src, relation, dst, properties,
-                                                         evidence_memory_ids, agent, valid_from))
+                                                         evidence_memory_ids, c.agent(agent), valid_from))
         return run(ctx, "kg_link", graph, body)
 
     @mcp.tool()
@@ -117,7 +130,8 @@ def register_resolved(mcp, deps: Callable[[], Deps]) -> None:
 
         def body(service, _query, c):
             c.graph(graph, target)
-            return c.written(graph, target, service.unlink(graph, src, relation, dst, reason))
+            return c.written(graph, target, service.unlink(graph, src, relation, dst, reason,
+                                                           agent=c.agent(None)))
         return run(ctx, "kg_unlink", graph, body)
 
     @mcp.tool()
@@ -126,7 +140,7 @@ def register_resolved(mcp, deps: Callable[[], Deps]) -> None:
         history is preserved and the entity can be revived by upserting it again."""
         def body(service, _query, c):
             c.graph(graph, key)
-            return c.written(graph, key, service.retire_entity(graph, key, reason))
+            return c.written(graph, key, service.retire_entity(graph, key, reason, agent=c.agent(None)))
         return run(ctx, "kg_retire_entity", graph, body)
 
     @mcp.tool()
@@ -172,7 +186,8 @@ def register_resolved(mcp, deps: Callable[[], Deps]) -> None:
         valid_to,retire_reason (valid_to records historical edges). Safe to re-run."""
         def body(service, _query, c):
             c.graph(graph)
-            return c.written(graph, None, service.batch(graph, entities or [], edges or [], agent))
+            return c.written(graph, None, service.batch(graph, entities or [], edges or [], c.agent(agent),
+                                                        force_agent=c.forced))
         return run(ctx, "kg_batch", graph, body)
 
     @mcp.tool()
@@ -184,7 +199,8 @@ def register_resolved(mcp, deps: Callable[[], Deps]) -> None:
 
         def body(service, _query, c):
             graphs = [c.fq(src, target), c.fq(dst, target)]
-            return c.written(graphs, target, service.xref(src, relation, dst, note, evidence_memory_ids, agent))
+            return c.written(graphs, target, service.xref(src, relation, dst, note, evidence_memory_ids,
+                                                          c.agent(agent)))
         return run(ctx, "kg_xref", None, body)
 
     @mcp.tool()

@@ -13,6 +13,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from memory_mcp.admin.audit import NullAudit
+from memory_mcp.admin.authz import stamped_agent
 from memory_mcp.admin.models import AuthzError
 from memory_mcp.kg.authz import KGGuard, fq_graph
 from memory_mcp.kg.models import KGError
@@ -99,6 +100,10 @@ def build_router(service, query, require_token: Callable, guard: KGGuard | None 
 
     def run(p, fn, *args, **kwargs):
         return _run(lambda d: guard.scrub(p, d), fn, *args, **kwargs)
+
+    def stamping(p) -> bool:
+        """Writes by keys and UI users record the server-stamped agent, never a declared one."""
+        return guard.enforcing and getattr(p, "kind", None) not in (None, "legacy")
 
     a_graphs = act("GET", "/kg/graphs")
 
@@ -226,7 +231,9 @@ def build_router(service, query, require_token: Callable, guard: KGGuard | None 
             if guard.enforcing and graph not in ends:
                 raise guard.deny(p, A_XREF, graph, target, AuthzError(
                     403, "xref_outside_graph", f"An xref imported into '{graph}' must have an endpoint in it"))
-        result = guard.scrub(p, run(p, service.batch, graph, ents, edges, "import"))
+        stamp = stamping(p)
+        result = guard.scrub(p, run(p, service.batch, graph, ents, edges,
+                                    stamped_agent(p, "import") if stamp else "import", force_agent=stamp))
         guard.written(p, a_import, graph, None, result)
         if result["status"] != "ok":
             raise HTTPException(422, detail=result)
@@ -234,8 +241,9 @@ def build_router(service, query, require_token: Callable, guard: KGGuard | None 
         for x in xrefs:
             target = _xref_target(x)
             try:
+                declared = x.get("agent", "import")
                 service.xref(x["src"], x["relation"], x["dst"], x["note"], x.get("evidence_memory_ids"),
-                             x.get("agent", "import"))
+                             stamped_agent(p, declared) if stamp else declared)
                 xr["imported"] += 1
                 guard.written(p, A_XREF, [fq_graph(x["src"]), fq_graph(x["dst"])], target)
             except KGError as e:
