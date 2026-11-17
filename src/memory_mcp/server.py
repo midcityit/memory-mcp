@@ -49,6 +49,12 @@ def create_app(*, admin_store: AdminStore | None = None, memory_store: MemorySto
                audit_purge_first_delay_s: float | None = None) -> FastAPI:
     """Build the app. `admin_store` / `memory_store` override the configured ones (tests)."""
     cfg = load_config()
+    if (admin_store is None and cfg_str(cfg, "admin_pg_dsn") is None
+            and cfg_str(cfg, "ui_token") is not None and cfg_str(cfg, "api_token") is None):
+        # Legacy mode accepts only API_TOKEN: this server would start and reject every call.
+        raise RuntimeError(
+            "UI_TOKEN is set but ADMIN_PG_DSN is not: UI_TOKEN only works in multi-tenant mode. "
+            "Set ADMIN_PG_DSN to enable it, or set API_TOKEN to run in legacy mode.")
 
     # Bootstrap OTel before anything else
     if cfg.otlp_endpoint:

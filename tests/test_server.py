@@ -129,3 +129,16 @@ def test_import_does_not_build_app_and_app_attribute_builds_once(monkeypatch):
     finally:
         monkeypatch.delenv("QDRANT_URL")
         importlib.reload(server)
+
+
+def test_legacy_mode_with_only_ui_token_fails_at_startup():
+    from memory_mcp.config import Config
+    from memory_mcp.server import create_app
+
+    cfg = Config(qdrant_url="unused", api_token=None, stale_days=30, otlp_endpoint="",
+                 default_list_limit=1000, ui_token="ui-token-value")
+    with patch("memory_mcp.server.load_config", return_value=cfg), \
+         patch("memory_mcp.server.MemoryStore") as store_cls:
+        with pytest.raises(RuntimeError, match="UI_TOKEN is set but ADMIN_PG_DSN is not"):
+            create_app()
+    store_cls.assert_not_called()  # fails before loading the model or touching Qdrant
