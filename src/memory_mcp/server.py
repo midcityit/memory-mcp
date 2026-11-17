@@ -1,17 +1,22 @@
 import dataclasses
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, HTTPException, Depends, Security, Request
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from fastapi.responses import JSONResponse
+from fastapi import FastAPI, HTTPException, Depends
 from pydantic import BaseModel
 from typing import Optional
+from memory_mcp.admin.auth import Authenticator, PrincipalMiddleware, principal_from_request
+from memory_mcp.admin.store import AdminStore
 from memory_mcp.config import load_config, Config
 from memory_mcp.store import MemoryStore, MemoryRecord
 from memory_mcp import mcp_tools
 from memory_mcp.telemetry import setup_telemetry
 
-# auto_error=False so we can return 401 (not 403) when no Authorization header
-_security = HTTPBearer(auto_error=False)
+
+def build_admin_store(cfg: Config) -> AdminStore | None:
+    """The admin store (tenants, keys, role mappings, settings), or None for legacy mode.
+
+    In legacy mode only API_TOKEN is accepted. A later task wires the real store here.
+    """
+    return None
 
 
 def create_app() -> FastAPI:
@@ -45,33 +50,24 @@ def create_app() -> FastAPI:
     except Exception:
         pass  # graceful degradation if instrumentation unavailable
 
-    # Guard /mcp with bearer token before routing to the MCP sub-app
-    @app.middleware("http")
-    async def _bearer_guard(request: Request, call_next):
-        if request.url.path.startswith("/mcp"):
-            auth = request.headers.get("Authorization", "")
-            if not auth.startswith("Bearer ") or auth[7:] != cfg.api_token:
-                return JSONResponse({"detail": "Unauthorized"}, status_code=401)
-        return await call_next(request)
+    # Resolve the caller (scoped key, legacy API_TOKEN, or UI acting for a user) on every
+    # path except /health, before routing; handlers and MCP tools read the Principal.
+    authenticator = Authenticator(cfg, build_admin_store(cfg))
+    app.state.authenticator = authenticator
+    app.add_middleware(PrincipalMiddleware, authenticator=authenticator)
 
     app.mount("/mcp", mcp_tools.streamable_http_app())
 
-    def require_token(
-        credentials: Optional[HTTPAuthorizationCredentials] = Security(_security),
-    ):
-        if credentials is None or credentials.credentials != cfg.api_token:
-            raise HTTPException(status_code=401, detail="Invalid or missing token")
-
     if kg is not None:
         from memory_mcp.kg.rest import build_router
-        app.include_router(build_router(kg.service, kg.query, require_token))
+        app.include_router(build_router(kg.service, kg.query, principal_from_request))
 
     @app.get("/health")
     def health():
         return {"status": "ok"}
 
     # ── REST list ──────────────────────────────────────────────────────────────
-    @app.get("/memories", dependencies=[Depends(require_token)])
+    @app.get("/memories", dependencies=[Depends(principal_from_request)])
     def list_memories(
         type: Optional[str] = None,
         source_repo: Optional[str] = None,
@@ -95,7 +91,7 @@ def create_app() -> FastAPI:
         return result
 
     # ── REST get single ────────────────────────────────────────────────────────
-    @app.get("/memories/{memory_id}", dependencies=[Depends(require_token)])
+    @app.get("/memories/{memory_id}", dependencies=[Depends(principal_from_request)])
     def get_memory(memory_id: str):
         record = store.get(memory_id)
         if not record:
@@ -109,7 +105,7 @@ def create_app() -> FastAPI:
         filter_type: Optional[str] = None
         filter_source_repo: Optional[str] = None
 
-    @app.post("/memories/search", dependencies=[Depends(require_token)])
+    @app.post("/memories/search", dependencies=[Depends(principal_from_request)])
     def search_memories(req: SearchRequest):
         records = store.search(
             query=req.query,
@@ -128,7 +124,7 @@ def create_app() -> FastAPI:
         agent: str = "claude-code"
         tags: list[str] = []
 
-    @app.post("/memories", dependencies=[Depends(require_token)], status_code=201)
+    @app.post("/memories", dependencies=[Depends(principal_from_request)], status_code=201)
     def save_memory(req: SaveRequest):
         now = MemoryStore.now_iso()
         match = store.find_by_name(req.name, req.source_repo)
@@ -148,7 +144,7 @@ def create_app() -> FastAPI:
         content: str
         tags: list[str] = []
 
-    @app.patch("/memories/{memory_id}", dependencies=[Depends(require_token)])
+    @app.patch("/memories/{memory_id}", dependencies=[Depends(principal_from_request)])
     def update_memory(memory_id: str, req: UpdateRequest):
         record = store.update(memory_id, req.content, req.tags)
         if not record:
@@ -156,7 +152,7 @@ def create_app() -> FastAPI:
         return _record_dict(record)
 
     # ── REST delete ────────────────────────────────────────────────────────────
-    @app.delete("/memories/{memory_id}", dependencies=[Depends(require_token)], status_code=204)
+    @app.delete("/memories/{memory_id}", dependencies=[Depends(principal_from_request)], status_code=204)
     def delete_memory(memory_id: str):
         if not store.delete(memory_id):
             raise HTTPException(status_code=404, detail="Memory not found")
