@@ -10,6 +10,7 @@ from typing import Callable
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
+from starlette.concurrency import run_in_threadpool
 from pydantic import BaseModel
 
 from memory_mcp.admin.audit import NullAudit
@@ -191,15 +192,22 @@ def build_router(service, query, require_token: Callable, guard: KGGuard | None 
 
     @r.post("/{graph}/import")
     async def import_(graph: str, request: Request, p=Depends(require_token)):
-        guard.graph(p, a_import, graph)
-        run(p, service.reg.require_graph, graph)
+        # Authorization and the writes hit the stores synchronously: keep them off the event loop.
+        def authorize():
+            guard.graph(p, a_import, graph)
+            run(p, service.reg.require_graph, graph)
+        await run_in_threadpool(authorize)
+        body = await request.body()
+        return await run_in_threadpool(import_body, graph, body, p)
+
+    def import_body(graph: str, body: bytes, p) -> dict:
         ents, edges, xrefs = [], [], []
 
         def bad(n, msg):
             return HTTPException(422, detail={"error": "invalid_json", "message": f"line {n}: {msg}"})
 
         try:
-            text = (await request.body()).decode("utf-8")
+            text = body.decode("utf-8")
         except UnicodeDecodeError as e:
             raise bad(0, f"body is not valid UTF-8: {e}")
         for n, line in enumerate(text.split("\n"), 1):

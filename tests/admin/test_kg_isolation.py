@@ -783,3 +783,30 @@ async def test_legacy_mode_kg_writes_keep_the_declared_agent(legacy_env):
                    "relation": "similar_to", "dst": f"alpha::{A2}"})
     ok(await rest(legacy_env, LEGACY, "POST", "/kg/alpha/import", content=body))
     assert store.get_xref(f"alpha::{A1}", "similar_to", f"alpha::{A2}").agent == "declared-agent"
+
+
+async def test_rest_import_runs_store_work_off_the_event_loop(env, monkeypatch):
+    import threading
+    k = env.key(tenants=("alpha", "beta"))
+    await upsert(env, k, "beta", "BETA-1")
+    service, loop_thread, seen = mcp_tools._kg.service, threading.current_thread(), []
+
+    def spy(name):
+        real = getattr(service, name)
+
+        def wrapper(*a, **kw):
+            seen.append((name, threading.current_thread() is loop_thread))
+            return real(*a, **kw)
+        return wrapper
+    for name in ("batch", "xref"):
+        monkeypatch.setattr(service, name, spy(name))
+    real_require = service.reg.require_graph
+    monkeypatch.setattr(service.reg, "require_graph", lambda g: (
+        seen.append(("require_graph", threading.current_thread() is loop_thread)), real_require(g))[1])
+    body = ndjson({"record": "entity", "provider": "logical", "type": "jira_issue", "native_id": "ALPHA-1"},
+                  {"record": "xref", "note": "n", **XREF})
+    r = ok(await rest(env, k, "POST", "/kg/alpha/import", content=body))
+    assert r["status"] == "ok" and r["xrefs"]["imported"] == 1
+    called = {name for name, _ in seen}
+    assert {"require_graph", "batch", "xref"} <= called
+    assert not any(on_loop for _, on_loop in seen), seen
