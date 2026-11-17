@@ -185,6 +185,34 @@ def _forbidden(code: str, message: str) -> AuthzError:
     return AuthzError(403, code, message)
 
 
+def _store_error_types() -> tuple[type[BaseException], ...]:
+    """Exceptions that mean a backing store (Postgres, Qdrant) is unavailable or failing."""
+    types: list[type[BaseException]] = [OSError, TimeoutError]
+    try:
+        import psycopg
+        types.append(psycopg.Error)
+    except ImportError:  # the postgres extra is optional
+        pass
+    try:
+        from psycopg_pool import PoolTimeout
+        types.append(PoolTimeout)
+    except ImportError:
+        pass
+    try:
+        from qdrant_client.http.exceptions import ResponseHandlingException, UnexpectedResponse
+        types += [ResponseHandlingException, UnexpectedResponse]
+    except ImportError:
+        pass
+    return tuple(types)
+
+
+_STORE_ERRORS = _store_error_types()
+
+
+def _is_store_error(e: BaseException) -> bool:
+    return isinstance(e, _STORE_ERRORS)
+
+
 # ── the API ───────────────────────────────────────────────────────────────────
 class AdminApi:
     def __init__(self, *, store: AdminStore, tenants: TenantService, authenticator: Authenticator,
@@ -213,7 +241,11 @@ class AdminApi:
             self._record_refusal(p, action, e, tenants)
             raise
         except Exception as e:
-            log.warning("admin call %s failed: %s", action, type(e).__name__)
+            if _is_store_error(e):
+                log.warning("admin call %s failed: %s", action, type(e).__name__)
+            else:
+                # Likely a programming error: keep the traceback (never the request body or headers).
+                log.exception("admin call %s failed unexpectedly", action)
             outage = AuthzError(503, "store_unavailable", STORE_UNAVAILABLE)
             self._record_refusal(p, action, outage, tenants)
             raise outage from e

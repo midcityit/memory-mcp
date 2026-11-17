@@ -621,3 +621,32 @@ async def test_tenant_admin_cannot_put_wildcard_on_a_key(env):
     resp = await env.client.post("/admin/keys", headers=ui(G_ADMIN), json=_key_body(tenants=["*"]))
     assert resp.status_code == 400 and resp.json()["code"] == "unknown_tenant"
     assert env.admin.list_keys() == []
+
+
+async def test_unexpected_admin_error_is_logged_with_traceback(env, monkeypatch, caplog):
+    def bug(*_a, **_k):
+        raise KeyError("programming error")
+
+    monkeypatch.setattr(env.admin, "list_keys", bug)
+    caplog.set_level(logging.WARNING, logger="memory_mcp.admin.rest")
+    resp = await env.client.get("/admin/keys", headers=ui(G_ADMIN) | {"X-Secret-Probe": "do-not-log"})
+    assert resp.status_code == 503
+    [rec] = [r for r in caplog.records if r.name == "memory_mcp.admin.rest"]
+    assert rec.levelno == logging.ERROR and rec.exc_info and rec.exc_info[0] is KeyError
+    assert "admin_list_keys" in rec.getMessage()
+    assert "do-not-log" not in caplog.text and "Bearer" not in caplog.text
+
+
+async def test_store_errors_are_logged_without_traceback(env, monkeypatch, caplog):
+    import psycopg
+
+    def down(*_a, **_k):
+        raise psycopg.OperationalError("connection refused")
+
+    monkeypatch.setattr(env.admin, "list_keys", down)
+    caplog.set_level(logging.WARNING, logger="memory_mcp.admin.rest")
+    resp = await env.client.get("/admin/keys", headers=ui(G_ADMIN))
+    assert resp.status_code == 503
+    [rec] = [r for r in caplog.records if r.name == "memory_mcp.admin.rest"]
+    assert rec.levelno == logging.WARNING and not rec.exc_info
+    assert "OperationalError" in rec.getMessage()
