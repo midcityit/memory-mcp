@@ -9,6 +9,7 @@ from memory_mcp.admin.audit import Audit, NullAudit, run_purge_loop
 from memory_mcp.admin.auth import Authenticator, PrincipalMiddleware, principal_from_request
 from memory_mcp.admin.memory_ops import MemoryOps
 from memory_mcp.admin.models import AuthzError, Principal
+from memory_mcp.admin.rest import build_admin_router
 from memory_mcp.admin.store import AdminStore
 from memory_mcp.admin.tenants import TenantService
 from memory_mcp.config import cfg_str, load_config, Config
@@ -127,6 +128,10 @@ def create_app(*, admin_store: AdminStore | None = None, memory_store: MemorySto
         return JSONResponse({"detail": e.message, "code": e.code}, status_code=e.status)
 
     app.mount("/mcp", mcp_tools.streamable_http_app())
+
+    app.include_router(build_admin_router(
+        store=admin_store, tenants=tenants, authenticator=authenticator, audit=audit,
+        memory_store=store, admin_group_ids=cfg.admin_group_ids, stale_days=cfg.stale_days))
 
     if kg is not None:
         from memory_mcp.kg.rest import build_router
