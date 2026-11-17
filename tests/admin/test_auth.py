@@ -348,3 +348,109 @@ async def test_middleware_skips_health_and_sets_principal(store, clock):
     assert h.status_code == 200
     assert who.json() == {"kind": "legacy", "id": "legacy"}
     assert bad.status_code == 400 and "detail" in bad.json()
+
+
+# ── review fix round 1 ──────────────────────────────────────────────────────
+
+def test_unknown_key_flood_keeps_caches_bounded(auth, store):
+    from memory_mcp.admin import auth as auth_mod
+    full, key_id = add_key(store)
+    assert auth.resolve(bearer(full)).id == key_id
+    for i in range(10_000):
+        status_of(lambda i=i: auth.resolve(bearer(f"mt_{i:08d}_x")))
+    assert len(auth._keys) <= auth_mod.KEY_CACHE_MAX == 4096
+    assert len(auth._unknown_keys) <= auth_mod.NEGATIVE_KEY_CACHE_MAX == 1024
+    assert auth.resolve(bearer(full)).id == key_id
+
+
+def test_unknown_key_negative_cache_expires_after_ttl(auth, store, clock):
+    calls = []
+    real = store.get_key
+    store.get_key = lambda id: calls.append(id) or real(id)
+    for _ in range(3):
+        status_of(lambda: auth.resolve(bearer("mt_ZZZZZZZZ_x")))
+    assert len(calls) == 1
+    clock.t += 30
+    status_of(lambda: auth.resolve(bearer("mt_ZZZZZZZZ_x")))
+    assert len(calls) == 2
+
+
+def test_fetch_straddling_invalidate_is_not_cached(store, clock):
+    full, key_id = add_key(store)
+    store.replace_mappings([RoleMapping(G1, "alpha", "viewer")], by="t")
+    auth = Authenticator(cfg(), store, clock=clock)
+
+    def racing(read):
+        def wrapper(*a):
+            value = read(*a)
+            auth.invalidate()  # an admin write lands while this read is in flight
+            return value
+        return wrapper
+
+    store.get_key = racing(store.get_key)
+    store.get_settings = racing(store.get_settings)
+    store.list_mappings = racing(store.list_mappings)
+    auth.resolve(bearer(full))
+    auth.resolve(bearer(API))
+    auth.resolve(ui_headers())
+    assert len(auth._keys) == 0 and len(auth._unknown_keys) == 0
+    assert auth._settings is None and auth._mappings is None
+
+
+def test_equal_api_and_ui_tokens_rejected(store):
+    with pytest.raises(ValueError, match="API_TOKEN and UI_TOKEN must differ"):
+        Authenticator(cfg(api_token="same", ui_token="same"), store)
+
+
+def test_user_name_capped_at_256_after_decoding(auth):
+    assert auth.resolve(ui_headers(name=quote("é" * 256))).user_name == "é" * 256
+    assert status_of(lambda: auth.resolve(ui_headers(name="x" * 257)))[0] == 400
+
+
+@pytest.mark.parametrize("value", ["false", "true", 0, 1, None])
+def test_legacy_token_fails_closed_on_non_true_setting(auth, store, value):
+    store.put_settings({"legacy_token_enabled": value}, by="t")
+    assert status_of(lambda: auth.resolve(bearer(API))) == (401, "Unauthorized")
+
+
+def _who_app(authenticator):
+    app = FastAPI()
+
+    @app.get("/who")
+    def who(p: Principal = Depends(principal_from_request)):
+        return {"id": p.id}
+
+    app.add_middleware(PrincipalMiddleware, authenticator=authenticator)
+    return app
+
+
+@pytest.mark.parametrize("dup", [("authorization", f"Bearer {API}"), ("x-mt-user", "u2"),
+                                 ("x-mt-groups", G2)])
+async def test_duplicate_auth_headers_are_400(store, clock, dup):
+    app = _who_app(Authenticator(cfg(), store, clock=clock))
+    headers = [(k.lower(), v) for k, v in ui_headers().items()] + [dup]
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        r = await c.get("/who", headers=headers)
+    assert r.status_code == 400 and r.json() == {"detail": "Duplicate header"}
+
+
+async def test_duplicate_unrelated_header_is_fine(store, clock):
+    app = _who_app(Authenticator(cfg(), store, clock=clock))
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        r = await c.get("/who", headers=[("authorization", f"Bearer {API}"), ("x-other", "1"), ("x-other", "2")])
+    assert r.json() == {"id": "legacy"}
+
+
+async def test_401_carries_www_authenticate(store, clock):
+    app = _who_app(Authenticator(cfg(), store, clock=clock))
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        r = await c.get("/who")
+    assert r.status_code == 401 and r.headers["www-authenticate"] == "Bearer"
+
+
+async def test_503_comes_back_as_json_through_middleware(clock):
+    app = _who_app(Authenticator(cfg(), BrokenStore(), clock=clock))
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        r = await c.get("/who", headers=bearer(API))
+    assert r.status_code == 503
+    assert r.json() == {"detail": "Admin store unavailable"}

@@ -86,3 +86,19 @@ def test_create_app_with_kg_enabled_registers_tools_and_routes():
     assert {"mcit", "vtv"} <= set(ok.json()["graphs"])
     assert bad.status_code == 401
     assert "kg_upsert_entity" in {t.name for t in asyncio.run(mcp_tools.mcp.list_tools())}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("path", ["/docs", "/openapi.json", "/no-such-path"])
+async def test_legacy_mode_guards_docs_and_unknown_paths(app, path):
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        resp = await client.get(path)
+    assert resp.status_code == 401
+    assert resp.json() == {"detail": "Unauthorized"}
+
+
+@pytest.mark.asyncio
+async def test_legacy_mode_health_needs_no_token(app):
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        resp = await client.get("/health")
+    assert resp.status_code == 200
