@@ -1,32 +1,58 @@
 import dataclasses
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, HTTPException, Depends
+from fastapi import FastAPI, HTTPException, Depends, Request
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from typing import Optional
+from memory_mcp.admin.audit import NullAudit
 from memory_mcp.admin.auth import Authenticator, PrincipalMiddleware, principal_from_request
+from memory_mcp.admin.memory_ops import MemoryOps
+from memory_mcp.admin.models import AuthzError, Principal
 from memory_mcp.admin.store import AdminStore
+from memory_mcp.admin.tenants import TenantService
 from memory_mcp.config import load_config, Config
 from memory_mcp.store import MemoryStore, MemoryRecord
 from memory_mcp import mcp_tools
 from memory_mcp.telemetry import setup_telemetry
 
+TENANT_HEADER = "x-mt-tenant"
+
 
 def build_admin_store(cfg: Config) -> AdminStore | None:
     """The admin store (tenants, keys, role mappings, settings), or None for legacy mode.
 
-    In legacy mode only API_TOKEN is accepted. A later task wires the real store here.
+    In legacy mode only API_TOKEN is accepted and every memory lives in one collection.
     """
-    return None
+    dsn = getattr(cfg, "admin_pg_dsn", None)
+    if not isinstance(dsn, str) or not dsn:
+        return None
+    from memory_mcp.admin.pg_store import PgAdminStore
+    store = PgAdminStore(dsn)
+    store.ensure_schema()
+    return store
 
 
-def create_app() -> FastAPI:
+def _rest_tenant(request: Request) -> str | None:
+    """The tenant a REST call names via ?tenant= or X-MT-Tenant (they must agree), or None."""
+    named = set(request.query_params.getlist("tenant"))
+    header = request.headers.get(TENANT_HEADER)
+    if header is not None:
+        named.add(header)
+    if len(named) > 1:
+        raise AuthzError(400, "tenant_conflict", "?tenant= and X-MT-Tenant name different tenants")
+    return next(iter(named), None)
+
+
+def create_app(*, admin_store: AdminStore | None = None, memory_store: MemoryStore | None = None) -> FastAPI:
+    """Build the app. `admin_store` / `memory_store` override the configured ones (tests)."""
     cfg = load_config()
 
     # Bootstrap OTel before anything else
     if cfg.otlp_endpoint:
         setup_telemetry(cfg.otlp_endpoint)
 
-    store = MemoryStore(qdrant_url=cfg.qdrant_url, stale_days=cfg.stale_days)
+    store = memory_store if memory_store is not None else MemoryStore(qdrant_url=cfg.qdrant_url,
+                                                                      stale_days=cfg.stale_days)
     kg = None
     if cfg.kg_enabled:
         from memory_mcp.kg import build_kg
@@ -34,7 +60,23 @@ def create_app() -> FastAPI:
                       dup_threshold=cfg.kg_dup_threshold, max_chars=cfg.kg_max_chars,
                       backend=cfg.kg_backend, pg_dsn=cfg.kg_pg_dsn,
                       dual_write=cfg.kg_dual_write, dual_write_strict=cfg.kg_dual_write_strict)
-    mcp_tools._init(store, kg)
+
+    if admin_store is None:
+        admin_store = build_admin_store(cfg)
+    tenants = None
+    if admin_store is not None:
+        tenants = TenantService(admin_store, store, kg.store if kg is not None else None)
+        tenants.bootstrap(cfg.bootstrap_tenant_id, cfg.bootstrap_tenant_name,
+                          existing_graphs=list(kg.registry.graphs) if kg is not None else [])
+
+    # Resolve the caller (scoped key, legacy API_TOKEN, or UI acting for a user) on every
+    # path except /health, before routing; handlers and MCP tools read the Principal.
+    authenticator = Authenticator(cfg, admin_store)
+    audit = NullAudit()
+    # Settings come from the authenticator's cache so admin writes invalidate one place.
+    settings = authenticator._settings_cached if admin_store is not None else dict
+    ops = MemoryOps(store, tenants, settings, audit)
+    mcp_tools._init(ops, kg)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -50,11 +92,15 @@ def create_app() -> FastAPI:
     except Exception:
         pass  # graceful degradation if instrumentation unavailable
 
-    # Resolve the caller (scoped key, legacy API_TOKEN, or UI acting for a user) on every
-    # path except /health, before routing; handlers and MCP tools read the Principal.
-    authenticator = Authenticator(cfg, build_admin_store(cfg))
+    app.state.admin_store = admin_store
+    app.state.tenants = tenants
     app.state.authenticator = authenticator
+    app.state.audit = audit
     app.add_middleware(PrincipalMiddleware, authenticator=authenticator)
+
+    @app.exception_handler(AuthzError)
+    async def authz_error(_request: Request, e: AuthzError):
+        return JSONResponse({"detail": e.message, "code": e.code}, status_code=e.status)
 
     app.mount("/mcp", mcp_tools.streamable_http_app())
 
@@ -66,8 +112,8 @@ def create_app() -> FastAPI:
     def health():
         return {"status": "ok"}
 
-    # ── REST list ──────────────────────────────────────────────────────────────
-    @app.get("/memories", dependencies=[Depends(principal_from_request)])
+    # ── REST memory routes (authorization lives in MemoryOps, shared with MCP) ──
+    @app.get("/memories")
     def list_memories(
         type: Optional[str] = None,
         source_repo: Optional[str] = None,
@@ -75,47 +121,40 @@ def create_app() -> FastAPI:
         tags: Optional[str] = None,
         limit: Optional[int] = None,
         offset: Optional[str] = None,
+        p: Principal = Depends(principal_from_request),
+        tenant: Optional[str] = Depends(_rest_tenant),
     ):
         tag_list = tags.split(",") if tags else None
-        records, next_offset = store.list_memories(
-            filter_type=type,
-            filter_source_repo=source_repo,
-            filter_agent=agent,
-            filter_tags=tag_list,
-            limit=limit or cfg.default_list_limit,
-            offset=offset,
+        records, next_offset = ops.list(
+            p, tenant, type=type, source_repo=source_repo, agent=agent, tags=tag_list,
+            limit=limit or cfg.default_list_limit, offset=offset,
         )
         result = {"memories": [_record_dict(r) for r in records]}
         if next_offset:
             result["next_offset"] = next_offset
         return result
 
-    # ── REST get single ────────────────────────────────────────────────────────
-    @app.get("/memories/{memory_id}", dependencies=[Depends(principal_from_request)])
-    def get_memory(memory_id: str):
-        record = store.get(memory_id)
+    @app.get("/memories/{memory_id}")
+    def get_memory(memory_id: str, p: Principal = Depends(principal_from_request),
+                   tenant: Optional[str] = Depends(_rest_tenant)):
+        record = ops.get(p, tenant, memory_id)
         if not record:
             raise HTTPException(status_code=404, detail="Memory not found")
         return _record_dict(record)
 
-    # ── REST search ────────────────────────────────────────────────────────────
     class SearchRequest(BaseModel):
         query: str
         limit: int = 10
         filter_type: Optional[str] = None
         filter_source_repo: Optional[str] = None
 
-    @app.post("/memories/search", dependencies=[Depends(principal_from_request)])
-    def search_memories(req: SearchRequest):
-        records = store.search(
-            query=req.query,
-            limit=req.limit,
-            filter_type=req.filter_type,
-            filter_source_repo=req.filter_source_repo,
-        )
+    @app.post("/memories/search")
+    def search_memories(req: SearchRequest, p: Principal = Depends(principal_from_request),
+                        tenant: Optional[str] = Depends(_rest_tenant)):
+        records = ops.search(p, tenant, query=req.query, limit=req.limit,
+                             filter_type=req.filter_type, filter_source_repo=req.filter_source_repo)
         return {"memories": [_record_dict(r) for r in records]}
 
-    # ── REST save ──────────────────────────────────────────────────────────────
     class SaveRequest(BaseModel):
         type: str
         name: str
@@ -124,37 +163,29 @@ def create_app() -> FastAPI:
         agent: str = "claude-code"
         tags: list[str] = []
 
-    @app.post("/memories", dependencies=[Depends(principal_from_request)], status_code=201)
-    def save_memory(req: SaveRequest):
-        now = MemoryStore.now_iso()
-        match = store.find_by_name(req.name, req.source_repo)
-        if match:
-            record = store.update(match.id, req.content, req.tags, type=req.type)
-        else:
-            record = store.upsert(MemoryRecord(
-                id=MemoryStore.new_id(),
-                type=req.type, name=req.name, content=req.content,
-                source_repo=req.source_repo, agent=req.agent, tags=req.tags,
-                created_at=now, updated_at=now,
-            ))
+    @app.post("/memories", status_code=201)
+    def save_memory(req: SaveRequest, p: Principal = Depends(principal_from_request),
+                    tenant: Optional[str] = Depends(_rest_tenant)):
+        record = ops.save(p, tenant, type=req.type, name=req.name, content=req.content,
+                          source_repo=req.source_repo, agent=req.agent, tags=req.tags)
         return _record_dict(record)
 
-    # ── REST update ────────────────────────────────────────────────────────────
     class UpdateRequest(BaseModel):
         content: str
         tags: list[str] = []
 
-    @app.patch("/memories/{memory_id}", dependencies=[Depends(principal_from_request)])
-    def update_memory(memory_id: str, req: UpdateRequest):
-        record = store.update(memory_id, req.content, req.tags)
+    @app.patch("/memories/{memory_id}")
+    def update_memory(memory_id: str, req: UpdateRequest, p: Principal = Depends(principal_from_request),
+                      tenant: Optional[str] = Depends(_rest_tenant)):
+        record = ops.update(p, tenant, memory_id, req.content, req.tags)
         if not record:
             raise HTTPException(status_code=404, detail="Memory not found")
         return _record_dict(record)
 
-    # ── REST delete ────────────────────────────────────────────────────────────
-    @app.delete("/memories/{memory_id}", dependencies=[Depends(principal_from_request)], status_code=204)
-    def delete_memory(memory_id: str):
-        if not store.delete(memory_id):
+    @app.delete("/memories/{memory_id}", status_code=204)
+    def delete_memory(memory_id: str, p: Principal = Depends(principal_from_request),
+                      tenant: Optional[str] = Depends(_rest_tenant)):
+        if not ops.delete(p, tenant, memory_id):
             raise HTTPException(status_code=404, detail="Memory not found")
 
     return app
