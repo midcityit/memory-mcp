@@ -500,3 +500,124 @@ async def test_audit_filters_and_bad_input(env):
     assert len(rows) == 1
     assert (await env.client.get("/admin/audit", params={"since": "yesterday"}, headers=h)).status_code == 400
     assert (await env.client.get("/admin/audit", params={"cursor": "%%%"}, headers=h)).status_code == 400
+
+
+# ── fix round 1 ───────────────────────────────────────────────────────────────
+TENANT_ID_HINT = "Use 2–32 characters: a lowercase letter first, then lowercase letters, digits or _."
+
+
+async def test_tenant_ids_follow_the_graph_id_rule(env):
+    h = ui(G_ADMIN)
+    longest = "t" + "x" * 31
+    assert (await env.client.post("/admin/tenants", headers=h, json={"id": longest, "name": "L"})).status_code == 201
+    for bad in ("has-hyphen", "t" + "x" * 32):
+        resp = await env.client.post("/admin/tenants", headers=h, json={"id": bad, "name": "x"})
+        assert resp.status_code == 400
+        assert resp.json() == {"detail": TENANT_ID_HINT, "code": "invalid_tenant_id"}
+
+
+async def test_default_tenant_cannot_be_disabled(env):
+    h = ui(G_ADMIN)
+    resp = await env.client.patch("/admin/tenants/alpha", headers=h, json={"status": "disabled"})
+    assert resp.status_code == 400
+    assert resp.json() == {"detail": "This is the default tenant. Choose another default tenant in Settings first.",
+                           "code": "default_tenant"}
+    assert env.admin.get_tenant("alpha").status == "active"
+    # Renaming it is fine, and so is disabling it once another tenant is the default.
+    assert (await env.client.patch("/admin/tenants/alpha", headers=h, json={"name": "A"})).status_code == 200
+    await env.client.put("/admin/settings", headers=h, json={"default_tenant": "beta"})
+    assert (await env.client.patch("/admin/tenants/alpha", headers=h, json={"status": "disabled"})).status_code == 200
+
+
+async def test_admin_store_outage_is_503_and_audited(env, monkeypatch):
+    def down(*_a, **_k):
+        raise RuntimeError("connection refused")
+
+    monkeypatch.setattr(env.admin, "list_keys", down)
+    resp = await env.client.get("/admin/keys", headers=ui(G_ADMIN))
+    assert resp.status_code == 503
+    assert resp.json() == {"detail": "Admin store unavailable", "code": "store_unavailable"}
+    row = env.audit(action="admin_list_keys")[0]
+    assert row["outcome"] == "error" and row["detail"] == {"rule": "store_unavailable"}
+
+    # A failing audit write does not change the answer.
+    monkeypatch.setattr(env.admin, "add_audit", down)
+    resp = await env.client.get("/admin/keys", headers=ui(G_ADMIN))
+    assert resp.status_code == 503 and resp.json()["code"] == "store_unavailable"
+
+
+async def test_non_ui_callers_get_403_even_with_a_malformed_body(env):
+    full, _ = env.key()
+    for headers in (bearer(full), bearer(LEGACY)):
+        for path in ("/admin/keys", "/admin/copy", "/admin/groups/known"):
+            resp = await env.client.post(path, headers=headers | {"Content-Type": "application/json"},
+                                         content=b"{not json")
+            assert resp.status_code == 403, (path, resp.text)
+            assert resp.json()["code"] == "ui_only"
+    denied = env.audit(outcome="denied")
+    assert len(denied) == 6 and all(r["detail"] == {"rule": "ui_only"} for r in denied)
+
+
+async def test_refused_key_changes_are_audited_under_each_tenant(env):
+    h = ui(G_TADMIN)  # admin on alpha only
+    resp = await env.client.post("/admin/keys", headers=h, json=_key_body(tenants=["alpha", "beta", "nosuch"]))
+    assert resp.status_code == 403
+    rows = env.audit(action="admin_create_key", outcome="denied")
+    assert sorted(r["tenant"] for r in rows) == ["alpha", "beta"]  # unknown names are not written
+
+    _, mixed = env.key(tenants=("beta", "gamma"))
+    for verb in ("rotate", "revoke"):
+        assert (await env.client.post(f"/admin/keys/{mixed}/{verb}", headers=h)).status_code == 403
+        rows = env.audit(action=f"admin_{verb}_key", outcome="denied")
+        assert sorted(r["tenant"] for r in rows) == ["beta", "gamma"]
+    # The beta admin can see the probing in beta's audit log.
+    seen = (await env.client.get("/admin/audit", params={"tenant": "beta", "outcome": "denied"},
+                                 headers=ui(G_BADMIN))).json()["rows"]
+    assert {r["action"] for r in seen} == {"admin_create_key", "admin_rotate_key", "admin_revoke_key"}
+
+
+async def test_rotating_a_key_without_expiry_gives_365_days(env):
+    _, key_id = env.key(expires_at=None)
+    resp = await env.client.post(f"/admin/keys/{key_id}/rotate", headers=ui(G_TADMIN))
+    assert resp.status_code == 200
+    expires = datetime.fromisoformat(resp.json()["record"]["expires_at"])
+    assert abs(expires - (_now() + timedelta(days=365))) < timedelta(minutes=1)
+
+
+async def test_keys_cannot_be_issued_onto_disabled_tenants(env):
+    _, key_id = env.key(tenants=("alpha", "gamma"))
+    env.app.state.tenants.set_status("gamma", "disabled")
+    h = ui(G_ADMIN)
+    resp = await env.client.post("/admin/keys", headers=h, json=_key_body(tenants=["gamma"]))
+    assert resp.status_code == 400 and resp.json()["code"] == "tenant_disabled"
+    resp = await env.client.post(f"/admin/keys/{key_id}/rotate", headers=h)
+    assert resp.status_code == 400 and resp.json()["code"] == "tenant_disabled"
+    assert len(env.admin.list_keys()) == 1
+
+
+async def test_key_without_tenants_is_invisible(env):
+    _, key_id = env.key(tenants=())
+    for h in (ui(G_TADMIN), ui(G_ADMIN)):
+        assert (await env.client.get("/admin/keys", headers=h)).json()["keys"] == []
+        assert (await env.client.post(f"/admin/keys/{key_id}/rotate", headers=h)).status_code == 403
+
+
+async def test_denied_row_tenant_comes_only_from_well_formed_ids(env):
+    resp = await env.client.get("/admin/audit", params={"tenant": "a" * 10_000}, headers=ui(G_TADMIN))
+    assert resp.status_code == 403
+    row = env.audit(action="admin_audit")[0]
+    assert row["outcome"] == "denied" and row["tenant"] is None
+
+
+async def test_tenant_vanishing_after_create_is_a_clean_error(env, monkeypatch):
+    monkeypatch.setattr(env.app.state.tenants, "stats", lambda: [])
+    resp = await env.client.post("/admin/tenants", headers=ui(G_ADMIN), json={"id": "delta", "name": "D"})
+    assert resp.status_code == 404 and resp.json()["code"] == "unknown_tenant"
+
+
+async def test_tenant_admin_cannot_put_wildcard_on_a_key(env):
+    resp = await env.client.post("/admin/keys", headers=ui(G_TADMIN), json=_key_body(tenants=["alpha", "*"]))
+    assert resp.status_code == 403 and resp.json()["code"] == "tenant_forbidden"
+    resp = await env.client.post("/admin/keys", headers=ui(G_ADMIN), json=_key_body(tenants=["*"]))
+    assert resp.status_code == 400 and resp.json()["code"] == "unknown_tenant"
+    assert env.admin.list_keys() == []

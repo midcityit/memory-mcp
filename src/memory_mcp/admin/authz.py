@@ -36,7 +36,7 @@ DEFAULT_AGENT = "claude-code"
 _WILDCARD = "*"
 
 
-def _role(p: Principal, tenant: str) -> str | None:
+def role_on(p: Principal, tenant: str) -> str | None:
     """The principal's role on `tenant`.
 
     The "*" wildcard (every tenant) applies to UI principals only, where it comes from
@@ -50,7 +50,7 @@ def _role(p: Principal, tenant: str) -> str | None:
 
 
 def _holds(p: Principal, tenant: str) -> bool:
-    return p.all_tenants or _role(p, tenant) is not None
+    return p.all_tenants or role_on(p, tenant) is not None
 
 
 def visible_tenants(p: Principal, tenants: TenantService) -> list[str]:
@@ -81,7 +81,7 @@ def authorize(p: Principal, action: str, tenant: str) -> None:
     """
     if p.all_tenants:
         return
-    role = _role(p, tenant)
+    role = role_on(p, tenant)
     if role is None:
         # Same answer whether or not the tenant exists.
         raise AuthzError(403, "tenant_forbidden", f"No access to tenant '{tenant}'")

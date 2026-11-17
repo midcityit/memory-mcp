@@ -12,6 +12,7 @@ Errors are ``AuthzError`` and reach the client as ``{"detail", "code"}``.
 from __future__ import annotations
 
 import json
+import logging
 import re
 from collections.abc import Callable, Iterable
 from datetime import datetime, timedelta, timezone
@@ -22,7 +23,7 @@ from fastapi.responses import JSONResponse
 
 from memory_mcp.admin.audit import AuditSink
 from memory_mcp.admin.auth import Authenticator, principal_from_request
-from memory_mcp.admin.authz import READ_ACTIONS, WRITE_ACTIONS, _role
+from memory_mcp.admin.authz import READ_ACTIONS, WRITE_ACTIONS, role_on
 from memory_mcp.admin.copy import copy_memories
 from memory_mcp.admin.keys import generate_key
 from memory_mcp.admin.models import ApiKey, AuthzError, Principal, RoleMapping
@@ -30,6 +31,8 @@ from memory_mcp.admin.store import AdminStore
 from memory_mcp.admin.tenants import TenantService
 from memory_mcp.kg.models import GRAPH_ID_RE
 from memory_mcp.store import MemoryStore
+
+log = logging.getLogger(__name__)
 
 WILDCARD = "*"
 ROLES = ("viewer", "editor", "admin")
@@ -45,11 +48,11 @@ DEFAULT_AUDIT_RETENTION_DAYS = 90
 SETTINGS_KEYS = ("instance_name", "default_tenant", "stale_days", "allowed_types",
                  "audit_retention_days", "audit_reads", "legacy_token_enabled")
 
-_TENANT_ID_RE = re.compile(r"^[a-z][a-z0-9_-]{1,30}$")
 _AGENT_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{1,62}$")
 _GUID_RE = re.compile(r"^[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$")
 
 NOT_AVAILABLE = {"detail": "Admin API not available"}
+STORE_UNAVAILABLE = "Admin store unavailable"
 
 
 # ── request helpers ───────────────────────────────────────────────────────────
@@ -57,15 +60,28 @@ def _invalid(message: str, code: str = "invalid_request") -> AuthzError:
     return AuthzError(400, code, message)
 
 
-async def _json_body(request: Request) -> Any:
-    """The parsed JSON body; 400 with a readable message if it is not JSON."""
-    raw = await request.body()
+async def _raw_body(request: Request) -> bytes:
+    """The body, unparsed: handlers parse it only after the caller has been let in."""
+    return await request.body()
+
+
+def _parse(raw: bytes) -> Any:
+    """The JSON body; 400 with a readable message if it is not JSON."""
     if not raw:
         return None
     try:
         return json.loads(raw)
     except ValueError:
         raise _invalid("Request body must be JSON") from None
+
+
+def _peek(raw: bytes, field: str) -> Any:
+    """`field` of a JSON object body, or None; never raises (used only to label audit rows)."""
+    try:
+        body = json.loads(raw) if raw else None
+    except ValueError:
+        return None
+    return body.get(field) if isinstance(body, dict) else None
 
 
 def _object(body: Any, allowed: Iterable[str]) -> dict:
@@ -183,14 +199,50 @@ class AdminApi:
         self._stale_days = stale_days
 
     # plumbing
-    def guarded(self, p: Principal, action: str, fn: Callable[[], Any], tenant: str | None = None) -> Any:
-        """Run `fn`; audit an AuthzError as denied (4xx) or error (5xx) and re-raise."""
+    def guarded(self, p: Principal, action: str, fn: Callable[[], Any],
+                tenants: Callable[[], Any] | None = None) -> Any:
+        """Run `fn`. A refusal (AuthzError 4xx) is audited as denied, a failure as error;
+        any other exception is taken as an admin store outage and becomes a 503.
+
+        `tenants` names the tenants the call was about, for the audit rows: one row per
+        existing tenant among them, or a single row without a tenant.
+        """
         try:
             return fn()
         except AuthzError as e:
-            outcome = "denied" if 400 <= e.status < 500 else "error"
-            self._audit.record(p, action, tenant, None, outcome, {"rule": e.code})
+            self._record_refusal(p, action, e, tenants)
             raise
+        except Exception as e:
+            log.warning("admin call %s failed: %s", action, type(e).__name__)
+            outage = AuthzError(503, "store_unavailable", STORE_UNAVAILABLE)
+            self._record_refusal(p, action, outage, tenants)
+            raise outage from e
+
+    def _record_refusal(self, p: Principal, action: str, e: AuthzError,
+                        tenants: Callable[[], Any] | None) -> None:
+        outcome = "denied" if 400 <= e.status < 500 else "error"
+        for tenant in self._audit_tenants(tenants):
+            self._audit.record(p, action, tenant, None, outcome, {"rule": e.code})
+
+    def _audit_tenants(self, tenants: Callable[[], Any] | None) -> list[str | None]:
+        """Existing tenants among the caller-supplied names; never raises.
+
+        Only well-formed ids that exist are written, so caller input cannot put
+        arbitrary text in the audit log or multiply its rows.
+        """
+        try:
+            named = tenants() if tenants is not None else []
+            if not isinstance(named, (list, tuple)):
+                named = [named]
+            found = [t for t in dict.fromkeys(x for x in named if isinstance(x, str))
+                     if GRAPH_ID_RE.match(t) and self._tenants.get(t) is not None]
+        except Exception:  # noqa: BLE001 - labelling an audit row must not fail the request
+            found = []
+        return found or [None]
+
+    def key_tenants(self, key_id: str) -> list[str]:
+        k = self._store.get_key(key_id)
+        return list(k.tenants) if k is not None else []
 
     @staticmethod
     def _require_ui(p: Principal) -> None:
@@ -217,7 +269,10 @@ class AdminApi:
         return {k: s.get(k, defaults[k]) for k in SETTINGS_KEYS}
 
     def _tenant_view(self, tenant_id: str) -> dict:
-        return next(t for t in self._tenants.stats() if t["id"] == tenant_id)
+        view = next((t for t in self._tenants.stats() if t["id"] == tenant_id), None)
+        if view is None:
+            raise AuthzError(404, "unknown_tenant", f"Unknown tenant '{tenant_id}'")
+        return view
 
     # me / groups
     def me(self, p: Principal) -> dict:
@@ -225,7 +280,7 @@ class AdminApi:
         if is_instance_admin(p):
             held = self._tenants.all()
         else:
-            held = [t for t in self._tenants.all() if _role(p, t.id) is not None]
+            held = [t for t in self._tenants.all() if role_on(p, t.id) is not None]
         settings = self._settings()
         return {
             "legacy_mode": False,
@@ -237,10 +292,10 @@ class AdminApi:
                          "default_tenant": settings["default_tenant"]},
         }
 
-    def known_groups(self, p: Principal, body: Any) -> dict:
+    def known_groups(self, p: Principal, raw: bytes) -> dict:
         if p.kind != "ui":  # the sign-in principal (empty id) is allowed here
             raise _forbidden("ui_only", "The admin API is only available to the web UI")
-        body = _object(body, ("group_ids",))
+        body = _object(_parse(raw), ("group_ids",))
         ids = _str_list(body.get("group_ids"), "group_ids")
         if len(ids) > MAX_KNOWN_GROUPS:
             raise _invalid(f"group_ids lists more than {MAX_KNOWN_GROUPS} groups", "too_many_groups")
@@ -252,13 +307,13 @@ class AdminApi:
         self._require_instance_admin(p)
         return {"tenants": self._tenants.stats()}
 
-    def create_tenant(self, p: Principal, body: Any) -> dict:
+    def create_tenant(self, p: Principal, raw: bytes) -> dict:
         self._require_instance_admin(p)
-        body = _object(body, ("id", "name", "description"))
+        body = _object(_parse(raw), ("id", "name", "description"))
         tid = body.get("id")
-        if not isinstance(tid, str) or not _TENANT_ID_RE.match(tid) or not GRAPH_ID_RE.match(tid):
-            raise _invalid("Tenant ID must be 2-31 characters: a lowercase letter first, "
-                           "then lowercase letters, digits or _", "invalid_tenant_id")
+        if not isinstance(tid, str) or not GRAPH_ID_RE.match(tid):  # a tenant id is a graph id
+            raise _invalid("Use 2–32 characters: a lowercase letter first, then lowercase letters, "
+                           "digits or _.", "invalid_tenant_id")
         name = _str(body, "name", min_len=1, max_len=80, label="Name")
         description = (_str(body, "description", max_len=500, label="Description")
                        if body.get("description") is not None else "")
@@ -272,9 +327,9 @@ class AdminApi:
         self._audit.record(p, "admin_create_tenant", tid, tid, "allowed", {"name": name})
         return self._tenant_view(tid)
 
-    def update_tenant(self, p: Principal, tenant_id: str, body: Any) -> dict:
+    def update_tenant(self, p: Principal, tenant_id: str, raw: bytes) -> dict:
         self._require_instance_admin(p)
-        body = _object(body, ("name", "description", "status"))
+        body = _object(_parse(raw), ("name", "description", "status"))
         if self._store.get_tenant(tenant_id) is None:
             raise AuthzError(404, "unknown_tenant", f"Unknown tenant '{tenant_id}'")
         changes: dict[str, str] = {}
@@ -287,6 +342,9 @@ class AdminApi:
             raise _invalid("Status must be active or disabled")
         if not changes and status is None:
             raise _invalid("Nothing to update")
+        if status == "disabled" and self._settings()["default_tenant"] == tenant_id:
+            raise _invalid("This is the default tenant. Choose another default tenant in Settings first.",
+                           "default_tenant")
         if changes:
             self._tenants.rename(tenant_id, **changes)
         if status is not None:
@@ -298,7 +356,15 @@ class AdminApi:
 
     # keys
     def _visible(self, p: Principal, k: ApiKey) -> bool:
-        return all(administers(p, t) for t in k.tenants)
+        return bool(k.tenants) and all(administers(p, t) for t in k.tenants)
+
+    def _require_active(self, tenant_ids: Iterable[str]) -> None:
+        for t in tenant_ids:
+            tenant = self._tenants.get(t)
+            if tenant is None:
+                raise _invalid(f"Unknown tenant '{t}'", "unknown_tenant")
+            if tenant.status != "active":
+                raise _invalid(f"Tenant '{t}' is disabled", "tenant_disabled")
 
     def _key_for_change(self, p: Principal, key_id: str) -> ApiKey:
         k = self._store.get_key(key_id)
@@ -329,9 +395,9 @@ class AdminApi:
                        "last_used_at": settings.get("legacy_last_used_at")},
         }
 
-    def create_key(self, p: Principal, body: Any) -> dict:
+    def create_key(self, p: Principal, raw: bytes) -> dict:
         self._require_tenant_admin(p)
-        body = _object(body, ("agent", "tenants", "access", "denied_tools", "source_repo_patterns",
+        body = _object(_parse(raw), ("agent", "tenants", "access", "denied_tools", "source_repo_patterns",
                               "expires_in_days"))
         agent = body.get("agent")
         if not isinstance(agent, str) or not _AGENT_RE.match(agent):
@@ -343,9 +409,7 @@ class AdminApi:
         for t in tenants:  # permission before existence: no existence signal to tenant admins
             if not administers(p, t):
                 raise _forbidden("tenant_forbidden", f"You do not administer tenant '{t}'")
-        for t in tenants:
-            if self._tenants.get(t) is None:
-                raise _invalid(f"Unknown tenant '{t}'", "unknown_tenant")
+        self._require_active(tenants)
         access = body.get("access")
         if access not in ("read", "write"):
             raise _invalid("Access must be read or write")
@@ -376,13 +440,15 @@ class AdminApi:
         old = self._key_for_change(p, key_id)
         if old.revoked_at is not None:
             raise _invalid("A revoked key cannot be rotated", "key_revoked")
+        self._require_active(old.tenants)
         now = _now()
-        # The new key gets the old key's lifetime; scope is copied unchanged.
-        lifetime = old.expires_at - old.created_at if old.expires_at is not None else None
+        # Scope is copied unchanged. The new key gets the old key's lifetime, or the longest
+        # offered expiry if the old key never expired: rotation never issues a key without one.
+        lifetime = (old.expires_at - old.created_at if old.expires_at is not None
+                    else timedelta(days=max(EXPIRY_DAYS)))
         full, key = self._issue(p, agent=old.agent, tenants=old.tenants, access=old.access,
                                 denied_tools=old.denied_tools, source_repo_patterns=old.source_repo_patterns,
-                                expires_at=now + lifetime if lifetime is not None else None,
-                                rotated_from=old.id)
+                                expires_at=now + lifetime, rotated_from=old.id)
         grace_end = now + ROTATE_GRACE
         if old.expires_at is None or old.expires_at > grace_end:
             self._store.set_key_expiry(old.id, grace_end)
@@ -416,9 +482,9 @@ class AdminApi:
             for m in self._store.list_mappings()
         ]}
 
-    def put_access(self, p: Principal, body: Any) -> dict:
+    def put_access(self, p: Principal, raw: bytes) -> dict:
         self._require_instance_admin(p)
-        body = _object(body, ("mappings",))
+        body = _object(_parse(raw), ("mappings",))
         rows = body.get("mappings")
         if not isinstance(rows, list):
             raise _invalid("mappings must be a list")
@@ -456,9 +522,9 @@ class AdminApi:
         self._require_instance_admin(p)
         return self._settings()
 
-    def put_settings(self, p: Principal, body: Any) -> dict:
+    def put_settings(self, p: Principal, raw: bytes) -> dict:
         self._require_instance_admin(p)
-        body = _object(body, SETTINGS_KEYS)
+        body = _object(_parse(raw), SETTINGS_KEYS)
         values: dict[str, Any] = {}
         if "instance_name" in body:
             values["instance_name"] = _str(body, "instance_name", min_len=1, max_len=60, label="Instance name")
@@ -504,9 +570,9 @@ class AdminApi:
         return {"rows": [_audit_row(r) for r in rows], "next_cursor": nxt}
 
     # copy
-    def copy(self, p: Principal, body: Any) -> dict:
+    def copy(self, p: Principal, raw: bytes) -> dict:
         self._require_ui(p)
-        body = _object(body, ("from", "to", "ids", "dry_run"))
+        body = _object(_parse(raw), ("from", "to", "ids", "dry_run"))
         from_, to = body.get("from"), body.get("to")
         if not isinstance(from_, str) or not isinstance(to, str) or not from_ or not to:
             raise _invalid("from and to must name tenants")
@@ -514,7 +580,7 @@ class AdminApi:
         dry_run = _bool(body.get("dry_run", False), "dry_run")
         if not administers(p, to):
             raise _forbidden("tenant_admin_required", f"Tenant admin role required on '{to}'")
-        if _role(p, from_) is None:
+        if role_on(p, from_) is None:
             raise _forbidden("tenant_forbidden", f"No access to tenant '{from_}'")
 
         def audited(dest_id: str, source_id: str) -> None:
@@ -556,44 +622,48 @@ def build_admin_router(*, store: AdminStore | None, tenants: TenantService | Non
                    memory_store=memory_store, admin_group_ids=admin_group_ids, stale_days=stale_days)
     router = APIRouter(prefix="/admin")
     who = Depends(principal_from_request)
-    body = Depends(_json_body)
+    body = Depends(_raw_body)
 
     @router.get("/me")
     def me(p: Principal = who):
         return api.guarded(p, "admin_me", lambda: api.me(p))
 
     @router.post("/groups/known")
-    def groups_known(p: Principal = who, b: Any = body):
-        return api.guarded(p, "admin_groups_known", lambda: api.known_groups(p, b))
+    def groups_known(p: Principal = who, raw: bytes = body):
+        return api.guarded(p, "admin_groups_known", lambda: api.known_groups(p, raw))
 
     @router.get("/tenants")
     def list_tenants(p: Principal = who):
         return api.guarded(p, "admin_list_tenants", lambda: api.list_tenants(p))
 
     @router.post("/tenants", status_code=201)
-    def create_tenant(p: Principal = who, b: Any = body):
-        tenant = b.get("id") if isinstance(b, dict) and isinstance(b.get("id"), str) else None
-        return api.guarded(p, "admin_create_tenant", lambda: api.create_tenant(p, b), tenant)
+    def create_tenant(p: Principal = who, raw: bytes = body):
+        return api.guarded(p, "admin_create_tenant", lambda: api.create_tenant(p, raw),
+                           lambda: _peek(raw, "id"))
 
     @router.patch("/tenants/{tenant_id}")
-    def update_tenant(tenant_id: str, p: Principal = who, b: Any = body):
-        return api.guarded(p, "admin_update_tenant", lambda: api.update_tenant(p, tenant_id, b), tenant_id)
+    def update_tenant(tenant_id: str, p: Principal = who, raw: bytes = body):
+        return api.guarded(p, "admin_update_tenant", lambda: api.update_tenant(p, tenant_id, raw),
+                           lambda: tenant_id)
 
     @router.get("/keys")
     def list_keys(p: Principal = who):
         return api.guarded(p, "admin_list_keys", lambda: api.list_keys(p))
 
     @router.post("/keys", status_code=201)
-    def create_key(p: Principal = who, b: Any = body):
-        return api.guarded(p, "admin_create_key", lambda: api.create_key(p, b))
+    def create_key(p: Principal = who, raw: bytes = body):
+        return api.guarded(p, "admin_create_key", lambda: api.create_key(p, raw),
+                           lambda: _peek(raw, "tenants"))
 
     @router.post("/keys/{key_id}/rotate")
     def rotate_key(key_id: str, p: Principal = who):
-        return api.guarded(p, "admin_rotate_key", lambda: api.rotate_key(p, key_id))
+        return api.guarded(p, "admin_rotate_key", lambda: api.rotate_key(p, key_id),
+                           lambda: api.key_tenants(key_id))
 
     @router.post("/keys/{key_id}/revoke", status_code=204)
     def revoke_key(key_id: str, p: Principal = who):
-        api.guarded(p, "admin_revoke_key", lambda: api.revoke_key(p, key_id))
+        api.guarded(p, "admin_revoke_key", lambda: api.revoke_key(p, key_id),
+                    lambda: api.key_tenants(key_id))
         return Response(status_code=204)
 
     @router.get("/access")
@@ -601,8 +671,8 @@ def build_admin_router(*, store: AdminStore | None, tenants: TenantService | Non
         return api.guarded(p, "admin_get_access", lambda: api.get_access(p))
 
     @router.put("/access")
-    def put_access(p: Principal = who, b: Any = body):
-        return api.guarded(p, "admin_put_access", lambda: api.put_access(p, b))
+    def put_access(p: Principal = who, raw: bytes = body):
+        return api.guarded(p, "admin_put_access", lambda: api.put_access(p, raw))
 
     @router.get("/audit")
     def audit_rows(p: Principal = who, tenant: str | None = None, principal: str | None = None,
@@ -610,20 +680,19 @@ def build_admin_router(*, store: AdminStore | None, tenants: TenantService | Non
                    until: str | None = None, cursor: str | None = None):
         return api.guarded(p, "admin_audit", lambda: api.audit_rows(
             p, tenant=tenant, principal=principal, action=action, outcome=outcome,
-            since=since, until=until, cursor=cursor), tenant or None)
+            since=since, until=until, cursor=cursor), lambda: tenant)
 
     @router.get("/settings")
     def get_settings(p: Principal = who):
         return api.guarded(p, "admin_get_settings", lambda: api.get_settings(p))
 
     @router.put("/settings")
-    def put_settings(p: Principal = who, b: Any = body):
-        return api.guarded(p, "admin_put_settings", lambda: api.put_settings(p, b))
+    def put_settings(p: Principal = who, raw: bytes = body):
+        return api.guarded(p, "admin_put_settings", lambda: api.put_settings(p, raw))
 
     @router.post("/copy")
-    def copy(p: Principal = who, b: Any = body):
-        to = b.get("to") if isinstance(b, dict) and isinstance(b.get("to"), str) else None
-        return api.guarded(p, "copy_memory", lambda: api.copy(p, b), to)
+    def copy(p: Principal = who, raw: bytes = body):
+        return api.guarded(p, "copy_memory", lambda: api.copy(p, raw), lambda: _peek(raw, "to"))
 
     @router.post("/legacy-token/retire", status_code=204)
     def retire_legacy(p: Principal = who):

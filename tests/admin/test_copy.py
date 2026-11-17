@@ -159,3 +159,14 @@ async def test_copy_memories_unit_rejects_same_tenant(env):
     with pytest.raises(AuthzError) as e:
         copy_memories(env.mstore, env.app.state.tenants, "alpha", "alpha", [], False, by="t")
     assert e.value.status == 400
+
+
+async def test_copy_refusal_does_not_reveal_whether_source_ids_exist(env):
+    real = env.seed("alpha", "secret plan")
+    fake = "22222222-2222-2222-2222-222222222222"
+    h = ui(G_BADMIN)  # admin on beta, no role on alpha
+    a = await _copy(env, h, ids=[real])
+    b = await _copy(env, h, ids=[fake])
+    assert a.status_code == b.status_code == 403
+    assert a.json() == b.json()
+    assert _count(env, "beta") == 0
