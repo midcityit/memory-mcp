@@ -15,7 +15,7 @@ from collections import Counter
 from collections.abc import Callable
 from typing import Any
 
-from memory_mcp.admin.audit import AuditSink
+from memory_mcp.admin.audit import AuditSink, audit_tenant
 from memory_mcp.admin.authz import authorize, visible_tenants
 from memory_mcp.admin.models import AuthzError, Principal
 from memory_mcp.admin.tenants import TenantService
@@ -71,7 +71,7 @@ class KGGuard:
     def _denied(self, p: Principal, action: str, graph: str | None, target: str | None,
                 e: AuthzError) -> None:
         outcome = "denied" if 400 <= e.status < 500 else "error"
-        self._audit.record(p, action, graph, target, outcome, {"rule": e.code})
+        self._audit.record(p, action, audit_tenant(graph), target, outcome, {"rule": e.code})
 
     def deny(self, p: Principal, action: str, graph: str | None, target: str | None, e: AuthzError) -> AuthzError:
         """Audit a refusal decided by the caller and return it for raising."""

@@ -810,3 +810,15 @@ async def test_rest_import_runs_store_work_off_the_event_loop(env, monkeypatch):
     called = {name for name, _ in seen}
     assert {"require_graph", "batch", "xref"} <= called
     assert not any(on_loop for _, on_loop in seen), seen
+
+
+@pytest.mark.parametrize("transport", ["mcp", "rest"])
+async def test_kg_denial_audit_keeps_only_well_formed_graph_names(env, transport):
+    k = env.key()
+    for g in ("Not A Graph!", "beta"):
+        if transport == "mcp":
+            assert not (await mcp(env, k, "kg_find", graph=g)).ok
+        else:
+            assert not (await rest(env, k, "POST", f"/kg/{g}/path", body={"src": "a", "dst": "b"})).ok
+    graphs = [r[2] for r in env.audit.rows if r[4] == "denied"]
+    assert graphs == [None, "beta"]

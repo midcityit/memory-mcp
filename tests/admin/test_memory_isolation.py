@@ -772,3 +772,13 @@ async def test_mcp_returns_copied_from_and_save_keeps_it(env):
     assert listed["copied"]["copied_from"] == prov and "copied_from" not in listed["plain"]
     assert (await c.save(k, name="copied", content="new content")).data["copied_from"] == prov
     assert {m["name"]: m for m in (await c.search(k, "copied")).data}["copied"]["copied_from"] == prov
+
+
+@pytest.mark.parametrize("transport", TRANSPORTS)
+async def test_denial_audit_keeps_only_well_formed_tenant_names(env, transport):
+    c, k = Caller(transport, env.client), env.key()
+    junk = "Robert'); DROP TABLE x;--"
+    assert not (await c.list(k, tenant=junk)).ok
+    assert not (await c.list(k, tenant="beta")).ok
+    denials = [(r[1], r[2]) for r in env.audit.rows if r[4] == "denied"]
+    assert denials == [("list_memories", None), ("list_memories", "beta")]

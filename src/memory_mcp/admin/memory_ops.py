@@ -9,7 +9,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
-from memory_mcp.admin.audit import AuditSink
+from memory_mcp.admin.audit import AuditSink, audit_tenant
 from memory_mcp.admin.authz import REST_ACTION, authorize, repo_allowed, resolve_tenant, stamped_agent
 from memory_mcp.admin.models import AuthzError, Principal
 from memory_mcp.admin.tenants import TenantService
@@ -48,7 +48,7 @@ class MemoryOps:
 
     def _deny(self, p: Principal, action: str, attempt: dict[str, Any], target: str | None,
               rule: str) -> None:
-        self._audit.record(p, action, attempt.get("tenant"), target, "denied", {"rule": rule})
+        self._audit.record(p, action, audit_tenant(attempt.get("tenant")), target, "denied", {"rule": rule})
 
     def _run(self, p: Principal, action: str, requested: str | None, target: str | None,
              fn: Callable[[str, dict[str, Any]], Any]) -> Any:
@@ -59,7 +59,7 @@ class MemoryOps:
         except AuthzError as e:
             # 4xx is a refusal; 5xx (e.g. store_unavailable) is an outage, not a denial.
             outcome = "denied" if 400 <= e.status < 500 else "error"
-            self._audit.record(p, action, attempt.get("tenant"), target, outcome, {"rule": e.code})
+            self._audit.record(p, action, audit_tenant(attempt.get("tenant")), target, outcome, {"rule": e.code})
             raise
 
     def _get_visible(self, p: Principal, action: str, memory_id: str, collection: str,

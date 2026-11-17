@@ -13,6 +13,7 @@ from typing import Any, Callable, Protocol
 from memory_mcp.admin.authz import READ_ACTIONS
 from memory_mcp.admin.models import Principal
 from memory_mcp.admin.store import AdminStore
+from memory_mcp.kg.models import GRAPH_ID_RE
 
 log = logging.getLogger(__name__)
 
@@ -22,6 +23,12 @@ PURGE_STARTUP_DELAY_S = 30.0
 
 _SENSITIVE_KEYS = frozenset({"content", "secret", "key", "token", "authorization", "password", "secret_hash"})
 _FULL_KEY = re.compile(r"mt_[A-Za-z0-9]{8}_\S+")
+
+
+def audit_tenant(tenant: Any) -> str | None:
+    """A caller-supplied tenant/graph name fit for an audit row: kept only if it is a well-formed
+    id, so arbitrary input never lands in the log (the same rule as the /admin audit rows)."""
+    return tenant if isinstance(tenant, str) and GRAPH_ID_RE.match(tenant) else None
 
 
 class AuditSink(Protocol):
