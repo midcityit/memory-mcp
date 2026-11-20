@@ -33,6 +33,29 @@ def _memory_lookup(memory_store):
     return lookup
 
 
+def _tenant_memory_lookup(memory_store, tenants):
+    """Look a memory up in one graph's tenant collection only (graph id == tenant id)."""
+    def lookup(memory_id: str, graph: str) -> dict | None:
+        t = tenants.get(graph)
+        if t is None or t.status != "active":
+            return None
+        try:
+            r = memory_store.get(memory_id, collection=t.collection)
+        except Exception:  # malformed ids raise in qdrant retrieve; treat as missing
+            return None
+        return {"id": r.id, "name": r.name, "type": r.type} if r else None
+    return lookup
+
+
+def use_tenants(kg: KG, tenants, memory_store) -> None:
+    """Multi-tenant mode: graphs are the tenants (all of them, disabled included, so a disabled
+    one is refused by authorization rather than reported unknown), and linked memories are
+    read from the entity's own tenant collection, never the default one."""
+    kg.registry.set_graph_source(
+        lambda: {t.id: {"name": t.name, "description": t.description} for t in tenants.all()})
+    kg.query.graph_memory_lookup = _tenant_memory_lookup(memory_store, tenants)
+
+
 def build_kg(client, embedder, memory_store=None, config_dir: str | None = None,
              dup_threshold: float = 0.90, max_chars: int = 6000,
              backend: str = "qdrant", pg_dsn: str | None = None,

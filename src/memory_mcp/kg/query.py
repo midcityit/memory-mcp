@@ -7,7 +7,7 @@ from collections import Counter
 from datetime import datetime, timedelta, timezone
 from typing import Callable
 
-from memory_mcp.kg.models import Edge, Entity, KGError, entity_point_id, fq_key, iso_to_ts
+from memory_mcp.kg.models import Edge, Entity, KGError, entity_point_id, fq_graph, fq_key, iso_to_ts
 from memory_mcp.kg.store import EntityFilter
 
 MAX_DEPTH = 6
@@ -77,6 +77,13 @@ def _check_direction(direction: str, allowed: tuple[str, ...]) -> None:
                       field="direction")
 
 
+def _visible_xrefs(xrefs, visible: frozenset[str] | None) -> list:
+    """Xrefs whose two endpoint graphs are both in `visible` (all of them when None)."""
+    if visible is None:
+        return list(xrefs)
+    return [x for x in xrefs if fq_graph(x.src) in visible and fq_graph(x.dst) in visible]
+
+
 def _edge_dict(e: Edge, graph: str | None = None) -> dict:
     d = {"src": e.src, "relation": e.relation, "dst": e.dst}
     if graph:
@@ -92,6 +99,9 @@ class KGQuery:
         self.reg = registry
         self.store = store
         self.memory_lookup = memory_lookup or (lambda _id: None)
+        # When set (multi-tenant mode), linked memories are looked up in the entity's own
+        # graph (= tenant) only, and `memory_lookup` is not used.
+        self.graph_memory_lookup: Callable[[str, str], dict | None] | None = None
         self.max_chars = max_chars
         self._hubs: dict[str, tuple[float, list[tuple[str, int]]]] = {}
 
@@ -107,10 +117,10 @@ class KGQuery:
     def _compact_map(self, graph: str, keys) -> dict[str, dict]:
         return {e.key: e.compact() for e in self.store.get_entities(graph, list(keys))}
 
-    def _memories(self, ids, types: tuple[str, ...] | None = None) -> list[dict]:
+    def _memories(self, graph: str, ids, types: tuple[str, ...] | None = None) -> list[dict]:
         out = []
         for i in ids:
-            m = self.memory_lookup(i)
+            m = self.graph_memory_lookup(i, graph) if self.graph_memory_lookup else self.memory_lookup(i)
             if m and (types is None or m.get("type") in types):
                 out.append(m)
         return out
@@ -171,7 +181,8 @@ class KGQuery:
         return {"results": results}
 
     # ── get ──────────────────────────────────────────────────────────────────
-    def get_entity(self, graph, key, as_of=None, include_history=False) -> dict:
+    def get_entity(self, graph, key, as_of=None, include_history=False, *,
+                   visible: frozenset[str] | None = None) -> dict:
         e = self._must_get(graph, key)
         at = _parse_as_of(as_of)
         outs = self.store.edges_from(graph, [key], at_ts=at)
@@ -186,8 +197,9 @@ class KGQuery:
         result = {"entity": {**e.compact(graph), "provider": e.provider, "type": e.type, "native_id": e.native_id,
                              "aliases": e.aliases, "properties": e.properties, "valid_from": e.valid_from,
                              "valid_to": e.valid_to},
-                  "out": out_g, "in": in_g, "memories": self._memories(e.memory_ids),
-                  "xrefs": [x.to_payload() for x in self.store.xrefs_touching(fq_key(graph, key))]}
+                  "out": out_g, "in": in_g, "memories": self._memories(graph, e.memory_ids),
+                  "xrefs": [x.to_payload() for x in
+                            _visible_xrefs(self.store.xrefs_touching(fq_key(graph, key)), visible)]}
         if include_history:
             hist = []
             for x in self.store.edges_from(graph, [key], include_retired=True) + \
@@ -237,7 +249,8 @@ class KGQuery:
 
     # ── traverse ─────────────────────────────────────────────────────────────
     def traverse(self, graph, start, direction="both", relations=None, kinds=None, max_depth=3, as_of=None,
-                 follow_xrefs=False, limit=200, max_chars=None) -> dict:
+                 follow_xrefs=False, limit=200, max_chars=None, *,
+                 visible: frozenset[str] | None = None) -> dict:
         _check_direction(direction, ("in", "out", "both"))
         limit = _clamp(limit, 1, 1000)
         root = self._must_get(graph, start)
@@ -313,7 +326,7 @@ class KGQuery:
         if follow_xrefs:
             xs = {}
             for k in nodes:
-                for x in self.store.xrefs_touching(fq_key(graph, k)):
+                for x in _visible_xrefs(self.store.xrefs_touching(fq_key(graph, k)), visible):
                     xs[(x.src, x.relation, x.dst)] = x.to_payload()
             result["xrefs"] = list(xs.values())
         return self._trim_traversal(result, max_chars or self.max_chars)
@@ -416,7 +429,7 @@ class KGQuery:
         self._hubs[graph] = (time.monotonic(), top)
         return top
 
-    def overview(self, graphs="*") -> dict:
+    def overview(self, graphs="*", *, visible: frozenset[str] | None = None) -> dict:
         since = datetime.now(timezone.utc) - timedelta(days=7)
         out = []
         for g in self.reg.graph_ids(graphs):
@@ -431,7 +444,8 @@ class KGQuery:
                         "hubs": [{"key": k, "display_name": cm[k].get("display_name", k), "degree": d}
                                  for k, d in hubs if k in cm],
                         "recent": [e.compact() for e in recent],
-                        "dangling_xrefs": sum(1 for x in self.store.xrefs_for_graph(g) if x.dangling)})
+                        "dangling_xrefs": sum(1 for x in _visible_xrefs(self.store.xrefs_for_graph(g), visible)
+                                                  if x.dangling)})
         result = {"graphs": out}
         if _size(result) > self.max_chars:
             result["truncated"] = True
@@ -444,9 +458,10 @@ class KGQuery:
         return result
 
     # ── cross-graph ──────────────────────────────────────────────────────────
-    def related_across(self, graph, key, target_graphs="*", limit=10) -> dict:
+    def related_across(self, graph, key, target_graphs="*", limit=10, *,
+                       visible: frozenset[str] | None = None) -> dict:
         e = self._must_get(graph, key)
-        xrefs = [x.to_payload() for x in self.store.xrefs_touching(fq_key(graph, key))]
+        xrefs = [x.to_payload() for x in _visible_xrefs(self.store.xrefs_touching(fq_key(graph, key)), visible)]
         vec = self.store.embedder.embed(f"{e.display_name} {' '.join(e.aliases)} {e.type}")
         similar = []
         for g in self.reg.graph_ids(target_graphs):
@@ -454,7 +469,7 @@ class KGQuery:
                 continue
             for h, s in self.store.search_entities(g, vec, EntityFilter(kind=e.kind), limit):
                 similar.append({**h.compact(g), "score": round(float(s), 4),
-                                "memories": self._memories(h.memory_ids, LESSON_MEMORY_TYPES)})
+                                "memories": self._memories(g, h.memory_ids, LESSON_MEMORY_TYPES)})
         similar.sort(key=lambda r: -r["score"])
         return fit({"xrefs": xrefs, "similar": similar[:limit]}, self.max_chars, ("similar", "xrefs"))
 

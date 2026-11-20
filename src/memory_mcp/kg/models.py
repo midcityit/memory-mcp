@@ -54,6 +54,11 @@ def is_fq_key(s: str) -> bool:
     return bool(sep) and GRAPH_ID_RE.match(head) is not None
 
 
+def fq_graph(fq: str) -> str | None:
+    """The graph part of a '{graph}::{key}' key, or None if `fq` is not fully qualified."""
+    return fq.split("::", 1)[0] if is_fq_key(fq) else None
+
+
 def split_fq(fq: str) -> tuple[str, str]:
     if not is_fq_key(fq):
         raise KGError("invalid_native_id", f"'{fq}' is not a fully qualified key ({{graph}}::{{key}})", field="key")

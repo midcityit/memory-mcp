@@ -176,11 +176,66 @@ Key details:
 | Env Var | Required | Default | Description |
 |---------|----------|---------|-------------|
 | `QDRANT_URL` | ✅ | — | Qdrant HTTP URL, e.g. `http://qdrant:6333` |
-| `API_TOKEN` | ✅ | — | Bearer token for all authenticated endpoints |
+| `API_TOKEN` | ✅ in legacy mode; in multi-tenant mode unless `UI_TOKEN` is set | — | Legacy shared bearer token. Optional once `ADMIN_PG_DSN` and `UI_TOKEN` are set and the legacy token is retired (see below). Must differ from `UI_TOKEN` |
 | `STALE_DAYS` | ❌ | `30` | Days before memories get stale warning |
 | `DEFAULT_LIST_LIMIT` | ❌ | `1000` | Default max records returned by list endpoint |
 | `MCP_ALLOWED_HOSTS` | ❌ | `localhost` | Comma-separated allowed hosts for MCP transport |
 | `OTLP_ENDPOINT` | ❌ | `http://otel-collector.monitoring.svc.cluster.local:4317` | OTLP gRPC endpoint; empty string disables |
+| `ADMIN_PG_DSN` | ❌ | — | Postgres DSN for the admin database. Setting it turns on multi-tenant mode. Opt-in only: it never falls back to `KG_PG_DSN`, so an instance that already has `KG_PG_DSN` stays in legacy mode until this is set |
+| `UI_TOKEN` | ❌ | — | Bearer token used by memory-ui in multi-tenant mode. Accepted only when `ADMIN_PG_DSN` is set; a legacy-mode server rejects it (and refuses to start with `UI_TOKEN` but no `API_TOKEN`). Must differ from `API_TOKEN` |
+| `ADMIN_GROUP_IDS` | ❌ | — | Comma-separated group ids whose members may use the admin API |
+| `BOOTSTRAP_TENANT_ID` | ❌ | — | Required on the first start in multi-tenant mode (while no tenants exist): the first tenant, which adopts the existing `memories` collection |
+| `BOOTSTRAP_TENANT_NAME` | ❌ | id | Display name for the bootstrap tenant |
+
+---
+
+## Tenants and keys
+
+Without `ADMIN_PG_DSN` the server runs in legacy mode: one shared token (`API_TOKEN`), one collection, and the admin endpoints return 501. Setting `ADMIN_PG_DSN` turns on multi-tenant mode.
+
+- **Tenant.** A separate set of memories with its own Qdrant collection. The id matches `^[a-z][a-z0-9_]{1,31}$`; the collection is `memories_<id>`. The first tenant (`BOOTSTRAP_TENANT_ID`) adopts the existing `memories` collection, so current data stays where it is. It is also the default tenant for the legacy token and the UI. Tenants can be disabled (calls are rejected, data stays); they cannot be deleted.
+- **Key format.** `mt_<id>_<secret>`. The full key is shown once, when it is created or rotated, and cannot be read back. Store it straight away (for example as `<cctech-keyvault:SECRET-NAME>`).
+- **Scope.** Each key names the tenants it may use, read or write access, optionally tools it may not call, optionally `source_repo` patterns it may touch, and an optional expiry. Rotating a key makes a new one with the same scope; the old one keeps working for 24 hours so an agent can be switched without downtime. Revoking takes effect within about 30 seconds.
+- **Agent stamping.** Memories and knowledge-graph writes (entities, edges, xrefs, batches and imports, including per-item `agent` fields) made with a scoped key are stamped with the key's agent name, and those made through the UI with `ui:<user name>`, not whatever the caller claims. The legacy token keeps the declared agent.
+- **Legacy token.** `API_TOKEN` keeps working and acts on the default tenant. Once the Keys screen shows it unused, retire it by removing `API_TOKEN` (and keep `UI_TOKEN`).
+- **`/docs`.** The API docs page now needs a token like every other route.
+- **memory-ui and legacy mode.** Against a legacy-mode backend (no `ADMIN_PG_DSN`) the UI must use `API_TOKEN` as its bearer token: `UI_TOKEN` only works once `ADMIN_PG_DSN` is set.
+
+### Upgrading to multi-tenant mode
+
+Make these changes together, in one deploy, so the UI never holds a token the server rejects:
+
+1. On memory-mcp set `ADMIN_PG_DSN`, `UI_TOKEN`, `ADMIN_GROUP_IDS` and `BOOTSTRAP_TENANT_ID` (optionally `BOOTSTRAP_TENANT_NAME`). Keep `API_TOKEN` so existing agents keep working on the default tenant.
+2. In the same change, switch memory-ui's bearer token from `API_TOKEN` to `UI_TOKEN`.
+3. After the first start (which adopts `memories` as the bootstrap tenant), create the other tenants and their keys, split shared data if needed (below), move agents to scoped keys, and retire `API_TOKEN` once the Keys screen shows it unused.
+
+## Splitting an existing collection
+
+If one collection holds memories for several tenants, `scripts/split_memories.py` moves the other tenants' memories into their own collections. Run it once per instance. It keeps each memory's id, payload and vector, so links that refer to memory ids stay valid. Nothing is built in: you give it the rules.
+
+```bash
+# 1. Dry run (default): reads only, writes a CSV to review
+python scripts/split_memories.py --qdrant-url "$QDRANT_URL" \
+  --rule 'source_repo=org-b/*:beta' --rule 'tag=beta:beta' \
+  --default alpha --out plan.csv
+
+# 2. Review plan.csv. Fix single memories in overrides.csv (columns: id,tenant)
+
+# 3. Apply
+python scripts/split_memories.py --qdrant-url "$QDRANT_URL" \
+  --rule 'source_repo=org-b/*:beta' --rule 'tag=beta:beta' \
+  --default alpha --overrides overrides.csv --apply
+```
+
+- Rules are checked in the order given and the first match wins. `source_repo=` takes a case-sensitive glob; `tag=` matches one tag exactly. Overrides beat rules. Anything unmatched stays with `--default`, which must be the bootstrap tenant. Its points never move.
+- `--apply` re-reads live data (it does not use the CSV), prints which collection each tenant goes to, takes a Qdrant snapshot of the source collection and prints its name (no snapshot if nothing moves), copies the points, and checks that every copied point matches the source (payload and vector). If a target already holds the same id with different content, it is overwritten from the source. Just before deleting each batch, it re-reads the source and deletes only points still identical to their copy. If the snapshot or any copy or verify check fails, nothing is deleted and the exit code is non-zero. If something fails during the delete phase, the error says how many points were already deleted (each only after its copy was verified); the rest are still in the source, and rerunning `--apply` is safe and finishes the split.
+- **Pause writes** for the tenants being moved (or switch their agents to scoped keys first) while `--apply` runs. A memory edited during the run is left in the source, listed by id, and the run exits non-zero with "Some memories changed during the split; rerun --apply to finish."
+- **A rerun is safe.** It copies the newer version and deletes the source point. Points already in the target and unchanged are skipped.
+- The snapshot is the rollback. It is stored on the Qdrant node that took it, so restore is per node (see "Qdrant Backup & Restore" below).
+- The source must use a single unnamed vector (as memory-mcp does); the script refuses anything else before writing.
+- Order of work: start in multi-tenant mode first, then in one short window run the split and switch the agents of the other tenant to their scoped keys. Until switched, those agents still use the legacy token, which reads the default tenant and will not find the moved memories.
+- Use `--source` and `--collection-prefix` if your collection names differ from the defaults (`memories`, `memories_`).
+- With `--admin-pg-dsn` (default: `ADMIN_PG_DSN`) the script warns about every target tenant (rules, overrides and `--default`) that has no row in `mt_admin`; create those tenants first, or their moved memories are unreachable. Without it, it prints a note that tenants are not checked.
 
 ---
 
