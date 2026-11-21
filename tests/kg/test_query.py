@@ -294,7 +294,7 @@ def test_overview_never_drops_graphs_when_over_budget(svc, kg_registry, gstore):
                  for i in range(39)]
         assert svc.batch(g, ents, edges)["status"] == "ok"
     small = KGQuery(kg_registry, gstore, max_chars=1800).overview()
-    assert {g["graph"] for g in small["graphs"]} == {"mcit", "vtv"}
+    assert {g["graph"] for g in small["graphs"]} == {"mcit", "vtv", "ziese"}
     assert small["truncated"] is True
     assert len(json.dumps(small, default=str)) <= 1800
     assert all(set(h) == {"key", "display_name", "degree"} for g in small["graphs"] for h in g["hubs"])

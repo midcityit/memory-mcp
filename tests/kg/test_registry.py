@@ -9,8 +9,8 @@ def reg():
 
 
 def test_packaged_graphs(reg):
-    assert set(reg.graphs) == {"mcit", "vtv"}
-    assert reg.graph_ids("*") == ["mcit", "vtv"]
+    assert set(reg.graphs) == {"mcit", "vtv", "ziese"}
+    assert reg.graph_ids("*") == ["mcit", "vtv", "ziese"]
     assert reg.graph_ids("vtv") == ["vtv"]
     assert reg.graph_ids(["mcit"]) == ["mcit"]
 

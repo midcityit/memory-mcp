@@ -5,3 +5,6 @@ graphs:
   vtv:
     name: "Veritiv"
     description: "Veritiv cloud infra (AWS/Azure/GCP)"
+  ziese:
+    name: "Ziese Architecture"
+    description: "Ziese client estate (OPNsense, Hyper-V VMs, WARP/cloudflared, Vitruvius, ziese-memory)"
