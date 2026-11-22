@@ -317,6 +317,9 @@ def build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--admin-pg-dsn", default=os.environ.get("ADMIN_PG_DSN"),
                     help="admin database DSN (default: env ADMIN_PG_DSN); when given, warn about "
                          "target tenants that have no row in mt_admin")
+    ap.add_argument("--timeout", type=int, default=300, metavar="SECONDS",
+                    help="Qdrant request timeout (default: 300). The snapshot taken before --apply "
+                         "can run well past qdrant-client's 5-second default on a real collection")
     return ap
 
 
@@ -362,7 +365,7 @@ def main(argv: list[str] | None = None, *,
     except Exception as e:  # noqa: BLE001 - the check is advisory
         print(f"warning: could not check tenants in mt_admin: {type(e).__name__}: {e}", file=sys.stderr)
 
-    client = QdrantClient(url=args.qdrant_url)
+    client = QdrantClient(url=args.qdrant_url, timeout=args.timeout)
     points = list(scroll_all(client, args.source))
     planned = plan(points, rules, default, overrides)
     counts = Counter(t for _, t in planned)

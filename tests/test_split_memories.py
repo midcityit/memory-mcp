@@ -106,7 +106,7 @@ def test_glob_may_contain_colon():
 
 def test_dry_run_writes_nothing(client, tmp_path, monkeypatch):
     out = tmp_path / "plan.csv"
-    monkeypatch.setattr(sm, "QdrantClient", lambda url: client)
+    monkeypatch.setattr(sm, "QdrantClient", lambda url, **kw: client)
     monkeypatch.setattr(sm, "apply", lambda *a, **k: pytest.fail("apply called in dry run"))
     rc = sm.main(["--qdrant-url", "x", "--default", "alpha", "--rule", "source_repo=org-b/*:beta",
                   "--rule", "tag=gamma:gamma", "--out", str(out)])
@@ -258,7 +258,7 @@ def _main_args():
 
 
 def test_main_exits_nonzero_when_something_changed(client, monkeypatch, capsys):
-    monkeypatch.setattr(sm, "QdrantClient", lambda url: client)
+    monkeypatch.setattr(sm, "QdrantClient", lambda url, **kw: client)
     monkeypatch.setattr(sm, "make_snapshot_fn", lambda c: snap_ok)
     _edit_source_before_confirm(monkeypatch, client, 2)
     assert sm.main(_main_args()) == 1
@@ -286,7 +286,7 @@ def test_named_vector_source_fails_before_any_write():
 def test_unmatched_override_warns(client, monkeypatch, tmp_path, capsys):
     ov = tmp_path / "ov.csv"
     ov.write_text("id,tenant\nnot-a-point,gamma\n")
-    monkeypatch.setattr(sm, "QdrantClient", lambda url: client)
+    monkeypatch.setattr(sm, "QdrantClient", lambda url, **kw: client)
     assert sm.main(["--qdrant-url", "x", "--default", "alpha", "--overrides", str(ov)]) == 0
     assert "override id not-a-point matches no point" in capsys.readouterr().err
 
@@ -294,7 +294,7 @@ def test_unmatched_override_warns(client, monkeypatch, tmp_path, capsys):
 # --- delete-phase failure and tenant check -----------------------------------
 
 def test_failure_during_delete_reports_deleted_count_and_rerun_finishes(client, monkeypatch, capsys):
-    monkeypatch.setattr(sm, "QdrantClient", lambda url: client)
+    monkeypatch.setattr(sm, "QdrantClient", lambda url, **kw: client)
     monkeypatch.setattr(sm, "make_snapshot_fn", lambda c: snap_ok)
     real_delete, calls = client.delete, []
 
@@ -316,7 +316,7 @@ def test_failure_during_delete_reports_deleted_count_and_rerun_finishes(client, 
 
 
 def test_failure_before_delete_still_says_nothing_deleted(client, monkeypatch, capsys):
-    monkeypatch.setattr(sm, "QdrantClient", lambda url: client)
+    monkeypatch.setattr(sm, "QdrantClient", lambda url, **kw: client)
 
     def no_snapshot(_c):
         def snap(_coll):
@@ -334,7 +334,7 @@ def test_unknown_target_tenants_warn_when_admin_dsn_given(client, monkeypatch, c
     admin = InMemoryAdminStore()
     admin.insert_tenant(Tenant("alpha", "Alpha", "", "memories", "active"), by="t")
     admin.insert_tenant(Tenant("beta", "Beta", "", "memories_beta", "active"), by="t")
-    monkeypatch.setattr(sm, "QdrantClient", lambda url: client)
+    monkeypatch.setattr(sm, "QdrantClient", lambda url, **kw: client)
     dsns = []
 
     def factory(dsn):
@@ -352,7 +352,7 @@ def test_unknown_target_tenants_warn_when_admin_dsn_given(client, monkeypatch, c
 
 def test_tenants_not_checked_without_admin_dsn(client, monkeypatch, capsys):
     monkeypatch.delenv("ADMIN_PG_DSN", raising=False)
-    monkeypatch.setattr(sm, "QdrantClient", lambda url: client)
+    monkeypatch.setattr(sm, "QdrantClient", lambda url, **kw: client)
     args = ["--qdrant-url", "x", "--default", "alpha", "--rule", "tag=gamma:gamma"]
     assert sm.main(args, tenant_lookup_factory=lambda dsn: pytest.fail("looked up tenants")) == 0
     cap = capsys.readouterr()
@@ -363,3 +363,22 @@ def test_tenants_not_checked_without_admin_dsn(client, monkeypatch, capsys):
 def test_admin_dsn_defaults_to_env(monkeypatch):
     monkeypatch.setenv("ADMIN_PG_DSN", "postgresql://from-env/x")
     assert sm.build_parser().parse_args(["--default", "alpha"]).admin_pg_dsn == "postgresql://from-env/x"
+
+
+def test_main_passes_timeout_to_client(monkeypatch):
+    """The pre-apply snapshot can exceed qdrant-client's 5 s default; main() must pass a longer timeout."""
+    seen = {}
+
+    def fake_client(url, **kw):
+        seen.update(kw, url=url)
+        return QdrantClient(":memory:")
+
+    monkeypatch.setattr(sm, "QdrantClient", fake_client)
+    with pytest.raises(Exception):
+        sm.main(["--qdrant-url", "http://q:6333", "--default", "alpha"])
+    assert seen["url"] == "http://q:6333" and seen["timeout"] == 300
+
+    seen.clear()
+    with pytest.raises(Exception):
+        sm.main(["--qdrant-url", "http://q:6333", "--default", "alpha", "--timeout", "42"])
+    assert seen["timeout"] == 42
