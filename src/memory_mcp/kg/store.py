@@ -1,6 +1,8 @@
 """Qdrant-backed graph storage: per-graph entity/edge collections + shared xrefs."""
 from __future__ import annotations
 
+import re
+
 import time
 from dataclasses import dataclass
 from typing import Iterator
@@ -20,6 +22,9 @@ _SCROLL_PAGE = 1000
 
 def entities_collection(graph: str) -> str:
     return f"kg_{graph}_entities"
+
+
+_ENTITIES_RE = re.compile(r"^kg_(.+)_entities$")
 
 
 def edges_collection(graph: str) -> str:
@@ -66,19 +71,36 @@ class QdrantGraphStore:
         for f in floats:
             self.client.create_payload_index(coll, f, PayloadSchemaType.FLOAT)
 
+    def _create(self, coll: str, vectors_config) -> None:
+        try:
+            self.client.create_collection(coll, vectors_config=vectors_config)
+        except Exception:
+            # Created by another process (a second worker) since the check: that is fine.
+            if not self.client.collection_exists(coll):
+                raise
+
     def ensure_graph(self, graph: str) -> None:
         existing = self._existing()
         ents, edges = entities_collection(graph), edges_collection(graph)
         if ents not in existing:
-            self.client.create_collection(ents, vectors_config=VectorParams(size=self.embedder.dim, distance=Distance.COSINE))
+            self._create(ents, VectorParams(size=self.embedder.dim, distance=Distance.COSINE))
         if edges not in existing:
-            self.client.create_collection(edges, vectors_config={})
+            self._create(edges, {})
         self._index(ents, ["key", "provider", "kind", "type", "memory_ids", "aliases", "native_id", "display_name"], ["valid_from_ts", "valid_to_ts"])
         self._index(edges, ["src", "dst", "relation", "evidence_memory_ids"], ["valid_from_ts", "valid_to_ts"])
 
+    def graph_ids(self) -> list[str]:
+        """Graphs whose entity collection holds at least one point."""
+        out = []
+        for name in sorted(self._existing()):
+            m = _ENTITIES_RE.match(name)
+            if m and (self.client.get_collection(name).points_count or 0) > 0:
+                out.append(m.group(1))
+        return out
+
     def ensure_xrefs(self) -> None:
         if XREFS not in self._existing():
-            self.client.create_collection(XREFS, vectors_config={})
+            self._create(XREFS, {})
         self._index(XREFS, ["src", "dst", "src_graph", "dst_graph"], [])
 
     # ── helpers ──────────────────────────────────────────────────────────────

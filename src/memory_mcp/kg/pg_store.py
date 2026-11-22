@@ -109,6 +109,12 @@ class PostgresGraphStore:
     def ensure_xrefs(self) -> None:
         return None
 
+    def graph_ids(self) -> list[str]:
+        """Graphs that hold at least one entity or edge."""
+        with self.pool.connection() as c, c.cursor() as cur:
+            cur.execute("SELECT graph FROM kg_entity UNION SELECT graph FROM kg_edge")
+            return sorted(r["graph"] for r in cur.fetchall())
+
     # ── entities ─────────────────────────────────────────────────────────────
     def get_entities(self, graph: str, keys: list[str]) -> list[Entity]:
         if not keys:

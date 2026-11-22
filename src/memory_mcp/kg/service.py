@@ -1,6 +1,7 @@
 """Validated writes to the knowledge graph."""
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import replace
 
 from opentelemetry import metrics
@@ -226,32 +227,42 @@ class KGService:
         _writes.add(1, {"graph": graph, "op": "link"})
         return self._write_edge(graph, src, relation, dst, properties, evidence_memory_ids, agent, valid_from)
 
-    def unlink(self, graph, src, relation, dst, reason) -> dict:
+    def unlink(self, graph, src, relation, dst, reason, agent=None) -> dict:
+        """`agent`, when given, replaces the edge's agent (the caller who retired it)."""
         self.reg.require_graph(graph)
         cur = self.store.current_edge(graph, src, relation, dst)
         if cur is None:
             raise KGError("not_found", f"No current edge {src} -{relation}-> {dst}", field="relation")
         now = now_iso()
-        self.store.put_edge(graph, replace(cur, valid_to=now, retire_reason=reason))
+        retired = replace(cur, valid_to=now, retire_reason=reason)
+        if agent is not None:
+            retired = replace(retired, agent=agent)
+        self.store.put_edge(graph, retired)
         _writes.add(1, {"graph": graph, "op": "unlink"})
         return {"src": src, "relation": relation, "dst": dst, "status": "retired", "valid_to": now}
 
-    def retire_entity(self, graph, key, reason) -> dict:
+    def retire_entity(self, graph, key, reason, agent=None) -> dict:
+        """`agent`, when given, replaces the agent on the entity and on each edge it retires."""
         self.reg.require_graph(graph)
         e = self.store.get_entity(graph, key)
         if e is None or e.valid_to is not None:
             raise KGError("not_found", f"No current entity '{key}' in graph '{graph}'", field="key")
         now = now_iso()
         edges = self.store.edges_from(graph, [key]) + self.store.edges_to(graph, [key])
+        stamp = {} if agent is None else {"agent": agent}
         for ed in edges:
-            self.store.put_edge(graph, replace(ed, valid_to=now, retire_reason=reason))
-        self.store.upsert_entity(graph, replace(e, valid_to=now, updated_at=now))
+            self.store.put_edge(graph, replace(ed, valid_to=now, retire_reason=reason, **stamp))
+        self.store.upsert_entity(graph, replace(e, valid_to=now, updated_at=now, **stamp))
         _writes.add(1, {"graph": graph, "op": "retire_entity"})
         return {"key": key, "status": "retired", "edges_retired": len(edges)}
 
-    def delete_entity(self, graph, key, confirm=False) -> dict:
+    def delete_entity(self, graph, key, confirm=False, *,
+                      xref_removable: Callable[[XRef], bool] | None = None) -> dict:
         """Hard-delete (purge) an entity, its edges, and any xrefs touching it. Irreversible —
-        prefer retire_entity. Guarded by an explicit confirm flag."""
+        prefer retire_entity. Guarded by an explicit confirm flag.
+
+        With `xref_removable`, only the xrefs it accepts are deleted (and counted); the others
+        are kept, marked dangling, for whoever may manage their other endpoint."""
         self.reg.require_graph(graph)
         if not confirm:
             raise KGError("confirm_required",
@@ -261,7 +272,16 @@ class KGService:
             raise KGError("not_found", f"No entity '{key}' in graph '{graph}'", field="key",
                           suggestions=["kg_resolve to find the right key"])
         edges_removed = self.store.delete_entity_hard(graph, key)
-        xrefs_removed = self.store.delete_xrefs_touching(fq_key(graph, key))
+        if xref_removable is None:
+            xrefs_removed = self.store.delete_xrefs_touching(fq_key(graph, key))
+        else:
+            xrefs_removed = 0
+            for x in self.store.xrefs_touching(fq_key(graph, key)):
+                if xref_removable(x):
+                    self.store.delete_xref(x.src, x.relation, x.dst)
+                    xrefs_removed += 1
+                else:
+                    self.store.put_xref(replace(x, dangling=True))
         _writes.add(1, {"graph": graph, "op": "delete_entity"})
         return {"key": key, "status": "deleted", "edges_removed": edges_removed, "xrefs_removed": xrefs_removed}
 
@@ -276,8 +296,12 @@ class KGService:
         return {"src": src, "relation": relation, "dst": dst, "status": "deleted"}
 
     # ── batch ────────────────────────────────────────────────────────────────
-    def batch(self, graph, entities, edges, agent="claude-code") -> dict:
+    def batch(self, graph, entities, edges, agent="claude-code", *, force_agent: bool = False) -> dict:
+        """With `force_agent`, every item is written as `agent` and per-item agents are ignored."""
         self.reg.require_graph(graph)
+
+        def item_agent(item: dict) -> str:
+            return agent if force_agent else item.get("agent", agent)
         n_items = len(entities or []) + len(edges or [])
         if n_items > MAX_BATCH_ITEMS:
             raise KGError("invalid_native_id",
@@ -300,7 +324,7 @@ class KGService:
                     val = item.get(field)
                     if val is not None and not isinstance(val, str):
                         raise KGError("invalid_native_id", f"{field} must be a string, got {type(val).__name__}", field=field)
-                prepared.append(self._prepare_entity(graph, agent=item.get("agent", agent),
+                prepared.append(self._prepare_entity(graph, agent=item_agent(item),
                                                      **{k: item.get(k) for k in ENTITY_FIELDS}))
             except KGError as ex:
                 errors.append({"item": f"entities[{i}]", **ex.to_dict()})
@@ -347,7 +371,7 @@ class KGService:
                 ent, status = self._write_entity(graph, e)
                 written.append({"key": ent.key, "status": status})
             for item in edges or []:
-                written.append(self._write_edge(graph, agent=item.get("agent", agent),
+                written.append(self._write_edge(graph, agent=item_agent(item),
                                                 **{k: item.get(k) for k in EDGE_FIELDS}))
         except Exception as ex:  # infrastructure failure mid-write; retry is safe (deterministic ids)
             return {"status": "partial", "written": written, "failed_at": len(written), "error": str(ex)}
