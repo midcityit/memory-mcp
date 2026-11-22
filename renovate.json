@@ -1,4 +1,21 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": ["local>midcityit/github-tf:renovate-config"]
+  "extends": [
+    "local>midcityit/github-tf:renovate-config"
+  ],
+  "packageRules": [
+    {
+      "description": "kg-spike-pg is the KG database image (dev and prod). A Postgres major needs a matching AGE release, postgresql-server-dev-N, the pg_config path, and pg_upgrade of the live data directories, so it is a planned migration, not a dependency bump.",
+      "matchFileNames": [
+        "images/kg-spike-pg/Dockerfile"
+      ],
+      "matchPackageNames": [
+        "postgres"
+      ],
+      "matchUpdateTypes": [
+        "major"
+      ],
+      "enabled": false
+    }
+  ]
 }
