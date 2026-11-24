@@ -64,4 +64,4 @@ jobs:
           args: >
             -Dsonar.qualitygate.wait=true
             -Dsonar.qualitygate.timeout=300
-            -Dsonar.verbose=true # TEMP
+            -Dsonar.verbose=true

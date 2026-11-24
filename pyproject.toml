@@ -42,9 +42,10 @@ asyncio_default_fixture_loop_scope = "function"
 testpaths = ["tests"]
 
 [tool.coverage.run]
-source = ["src"]
+source = ["."]
 branch = true
 relative_files = true
 
 [tool.coverage.report]
+include = ["src/*"]
 skip_empty = true
