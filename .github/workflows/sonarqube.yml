@@ -52,6 +52,9 @@ jobs:
       - name: Warn if tests failed
         if: steps.tests.outcome == 'failure'
         run: echo "::warning::pytest failed; coverage may be partial (PR CI enforces tests)"
+      # TEMP
+      - name: TEMP show coverage.xml head
+        run: head -c 900 coverage.xml; echo; grep -m3 -o 'filename="[^"]*"' coverage.xml
       - name: SonarQube scan
         uses: SonarSource/sonarqube-scan-action@59202af334b4ba7b5db01b701b8e79f8b3bef0f4 # v8.5.0
         env:
@@ -61,3 +64,4 @@ jobs:
           args: >
             -Dsonar.qualitygate.wait=true
             -Dsonar.qualitygate.timeout=300
+            -Dsonar.verbose=true # TEMP
