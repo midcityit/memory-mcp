@@ -15,3 +15,7 @@ ui/out/
 # kg catalog generator inputs
 scripts/kg_sources/*.json
 scripts/kg_sources/*.txt
+
+# coverage
+coverage.xml
+.coverage
