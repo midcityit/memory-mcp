@@ -21,12 +21,27 @@ concurrency:
 jobs:
   scan:
     runs-on: [self-hosted, mcit-k8s, amd64]
-    timeout-minutes: 30
+    timeout-minutes: 45
     continue-on-error: ${{ vars.SONAR_ENFORCE != 'true' }}
     steps:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.15"  # same as ci.yml
+          cache: "pip"
+      - name: Install CPU-only torch (keeps disk small)
+        run: pip install torch --index-url https://download.pytorch.org/whl/cpu
+      - name: Install dependencies
+        run: pip install -e ".[dev]"
+      - name: Run tests with coverage
+        id: tests
+        continue-on-error: true
+        run: pytest --cov --cov-report=xml:coverage.xml --cov-report=term
+      - name: Warn if tests failed
+        if: steps.tests.outcome == 'failure'
+        run: echo "::warning::pytest failed; coverage may be partial (PR CI enforces tests)"
       - name: SonarQube scan
         uses: SonarSource/sonarqube-scan-action@59202af334b4ba7b5db01b701b8e79f8b3bef0f4 # v8.5.0
         env:
