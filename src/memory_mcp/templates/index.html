@@ -2,14 +2,14 @@
 {% block title %}Memory Twin — Browse{% endblock %}
 {% block content %}
 <form method="get" action="/" class="search-bar">
-  <input type="text" name="q" placeholder="Search memories…" value="{{ q or '' }}" />
-  <select name="type">
+  <input type="text" name="q" aria-label="Search memories" placeholder="Search memories…" value="{{ q or '' }}" />
+  <select name="type" aria-label="Filter by type">
     <option value="">All types</option>
     {% for t in ["user","feedback","project","reference"] %}
     <option value="{{ t }}" {% if filter_type == t %}selected{% endif %}>{{ t }}</option>
     {% endfor %}
   </select>
-  <select name="source_repo">
+  <select name="source_repo" aria-label="Filter by repo">
     <option value="">All repos</option>
     {% for r in repos %}
     <option value="{{ r }}" {% if filter_source_repo == r %}selected{% endif %}>{{ r }}</option>
